@@ -1,0 +1,1440 @@
+{
+  "version": "Notebook/1.0",
+  "isLocked": true,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "items": [
+    {
+      "type": 1,
+      "name": "title",
+      "content": {
+        "json": "# Azure 통합 네트워크 모니터\nVPN Gateway · VNet Peering · ExpressRoute\n\n구성 정보(Resource Graph), 시계열 지표(Azure Monitor), 진단 로그(Log Analytics)를 한곳에서 조회합니다. **배포 성공·로그 없음·Connected 구성 상태를 실제 통신 정상으로 해석하지 마세요.**"
+      }
+    },
+    {
+      "type": 9,
+      "name": "global-filters",
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "Subscriptions",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscriptions",
+            "label": "조회 구독",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "value": [
+              "value::selected"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": []
+            }
+          },
+          {
+            "id": "ResourceGroups",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceGroups",
+            "label": "리소스 그룹",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "ResourceContainers\n| where type =~ 'microsoft.resources/subscriptions/resourcegroups'\n| where subscriptionId in~ ({Subscriptions})\n| project value = name, label = name\n| distinct value, label\n| order by label asc",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "*"
+            }
+          },
+          {
+            "id": "TimeRange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "조회 시간",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "Workspace",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "로그 작업 영역 (선택)",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": false,
+            "value": "",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id, name\n| order by name asc",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            }
+          },
+          {
+            "id": "Tab",
+            "version": "KqlParameterItem/1.0",
+            "name": "Tab",
+            "label": "화면",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      }
+    },
+    {
+      "type": 11,
+      "name": "navigation",
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "tab-overview",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "통합 현황",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "tab-vpn",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "VPN 게이트웨이",
+            "subTarget": "vpn",
+            "style": "link"
+          },
+          {
+            "id": "tab-peering",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "VNet 피어링",
+            "subTarget": "peering",
+            "style": "link"
+          },
+          {
+            "id": "tab-expressroute",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "ExpressRoute 회선",
+            "subTarget": "expressroute",
+            "style": "link"
+          },
+          {
+            "id": "tab-logs",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "진단·변경 로그",
+            "subTarget": "logs",
+            "style": "link"
+          },
+          {
+            "id": "tab-guide",
+            "cellValue": "Tab",
+            "linkTarget": "parameter",
+            "linkLabel": "설정·해석 안내",
+            "subTarget": "guide",
+            "style": "link"
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "overview-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "overview-note",
+            "content": {
+              "json": "## 통합 현황\n구독과 리소스 그룹 필터는 구성 목록·지표 대상 선택·로그 조회에 적용됩니다. **조회 시간은 지표와 로그에만 적용**되며, Resource Graph 표는 현재 구성의 지연 반영된 스냅샷입니다. 표가 비어 있으면 권한·필터·해당 유형의 리소스 존재 여부를 확인하세요."
+            }
+          },
+          {
+            "type": 3,
+            "name": "summary",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "종류별 리소스 수와 배포 상태",
+              "query": "Resources\n| where type in~ ('microsoft.network/virtualnetworkgateways', 'microsoft.network/connections', 'microsoft.network/expressroutecircuits', 'microsoft.network/virtualnetworks')\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| extend ['종류'] = case(type =~ 'microsoft.network/virtualnetworkgateways', strcat(tostring(properties.gatewayType), ' Gateway'),\n    type =~ 'microsoft.network/connections', '게이트웨이 연결',\n    type =~ 'microsoft.network/expressroutecircuits', 'ExpressRoute 회선', '가상 네트워크')\n| summarize ['리소스 수'] = count(), ['배포 상태 확인 필요'] = countif(tostring(properties.provisioningState) != 'Succeeded') by ['종류']\n| order by ['종류'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "inventory",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "네트워크 리소스 목록",
+              "query": "Resources\n| where type in~ ('microsoft.network/virtualnetworkgateways', 'microsoft.network/connections', 'microsoft.network/expressroutecircuits', 'microsoft.network/virtualnetworks')\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| extend ['종류'] = case(type =~ 'microsoft.network/virtualnetworkgateways', strcat(tostring(properties.gatewayType), ' Gateway'),\n    type =~ 'microsoft.network/connections', '게이트웨이 연결',\n    type =~ 'microsoft.network/expressroutecircuits', 'ExpressRoute 회선', '가상 네트워크')\n| project ['리소스'] = name, ['종류'], ['배포 상태'] = tostring(properties.provisioningState),\n    ['지역'] = location, ['리소스 그룹'] = resourceGroup, ['구독'] = subscriptionId, id\n| order by ['종류'] asc, ['리소스'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "connections",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "VPN / ExpressRoute 연결 구성 상태",
+              "query": "Resources\n| where type =~ 'microsoft.network/connections'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| project ['연결'] = name, ['유형'] = tostring(properties.connectionType),\n    ['연결 상태'] = tostring(properties.connectionStatus),\n    ['배포 상태'] = tostring(properties.provisioningState),\n    ['게이트웨이'] = tostring(properties.virtualNetworkGateway1.id),\n    ['BGP 사용'] = tostring(properties.enableBgp),\n    ['원격 게이트웨이'] = tostring(properties.localNetworkGateway2.id),\n    ['회선'] = tostring(properties.peer.id), ['리소스 그룹'] = resourceGroup, id\n| order by ['연결 상태'] asc, ['연결'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "vpn-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "vpn"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "vpn-note",
+            "content": {
+              "json": "## VPN Gateway\n목록에서 게이트웨이를 선택하면 해당 리소스의 지표를 직접 조회합니다. 별도의 지표 내보내기는 필요하지 않습니다. **터널 평균 대역폭 단위는 바이트/초**입니다.\n\nBGP 상태는 0(연결 해제)/1(연결)이며 평균 집계 중 소수 값은 구간 내 변화 가능성을 뜻합니다. 터널 연결·BGP 사용·P2S 구성 및 SKU에 따라 지표가 없을 수 있습니다. 경로 수와 P2S 연결 수는 공급자가 지원하는 **구간 합계**이며 순간값이나 고유 연결 수가 아닙니다. 드롭은 전체 패킷 수 대비 비율이 아닌 개수입니다."
+            }
+          },
+          {
+            "type": 9,
+            "name": "vpn-selector",
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "VpnGateway",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "VpnGateway",
+                  "label": "VPN 게이트웨이",
+                  "type": 5,
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "query": "Resources\n| where type =~ 'microsoft.network/virtualnetworkgateways'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| where properties.gatewayType =~ 'Vpn'\n| project id, name\n| order by name asc",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "crossComponentResources": [
+                    "{Subscriptions}"
+                  ],
+                  "value": null,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  }
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            }
+          },
+          {
+            "type": 3,
+            "name": "vpn-inventory",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "VPN 게이트웨이 구성",
+              "query": "Resources\n| where type =~ 'microsoft.network/virtualnetworkgateways' and properties.gatewayType =~ 'Vpn'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| project ['게이트웨이'] = name, ['SKU'] = tostring(properties.sku.name),\n    ['VPN 유형'] = tostring(properties.vpnType), ['활성-활성'] = tostring(properties.activeActive),\n    ['BGP 사용'] = tostring(properties.enableBgp), ['ASN'] = tostring(properties.bgpSettings.asn),\n    ['배포 상태'] = tostring(properties.provisioningState), ['지역'] = location, id\n| order by ['게이트웨이'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-bandwidth",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-bandwidth",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Traffic-TunnelAverageBandwidth",
+                  "aggregation": 4,
+                  "splitBy": "ConnectionName",
+                  "columnName": "터널 평균 대역폭 (바이트/초)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "연결별 터널 평균 대역폭 (바이트/초)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-traffic",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-traffic",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Traffic-TunnelIngressBytes",
+                  "aggregation": 1,
+                  "splitBy": "ConnectionName",
+                  "columnName": "터널 수신량 (바이트/구간)",
+                  "splitByLimit": 20
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Traffic-TunnelEgressBytes",
+                  "aggregation": 1,
+                  "splitBy": "ConnectionName",
+                  "columnName": "터널 송신량 (바이트/구간)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "연결별 터널 수신·송신량 (바이트/구간)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-drops",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-drops",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Errors-TunnelIngressPacketDropCount",
+                  "aggregation": 1,
+                  "splitBy": "ConnectionName",
+                  "columnName": "수신 드롭 (패킷/구간)",
+                  "splitByLimit": 20
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Errors-TunnelEgressPacketDropCount",
+                  "aggregation": 1,
+                  "splitBy": "ConnectionName",
+                  "columnName": "송신 드롭 (패킷/구간)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "연결별 터널 수신·송신 드롭 (패킷/구간)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-bgp",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-bgp",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Routing-BgpPeerStatus",
+                  "aggregation": 4,
+                  "splitBy": "BgpPeerAddress",
+                  "columnName": "BGP 피어 상태 (0/1)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "BGP 피어 상태 (0/1, 평균)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-routes",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-routes",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Routing-BgpRoutesLearned",
+                  "aggregation": 1,
+                  "splitBy": "BgpPeerAddress",
+                  "columnName": "학습 경로 (합계/구간)",
+                  "splitByLimit": 20
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Routing-BgpRoutesAdvertised",
+                  "aggregation": 1,
+                  "splitBy": "BgpPeerAddress",
+                  "columnName": "광고 경로 (합계/구간)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "BGP 피어별 학습·광고 경로 (합계/구간)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-p2s",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-p2s",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Traffic-P2SConnectionCount",
+                  "aggregation": 1,
+                  "splitBy": "Protocol",
+                  "columnName": "P2S 연결 (합계/구간)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "프로토콜별 P2S 연결 (합계/구간)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "vpn-p2s-bandwidth",
+            "conditionalVisibility": {
+              "parameterName": "VpnGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "vpn-p2s-bandwidth",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateway",
+              "resourceIds": [
+                "{VpnGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Traffic-P2SBandwidth",
+                  "aggregation": 4,
+                  "splitBy": "Instance",
+                  "columnName": "P2S 대역폭 (바이트/초)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "인스턴스별 P2S 평균 대역폭 (바이트/초)"
+            }
+          },
+          {
+            "type": 1,
+            "name": "vpn-log-note",
+            "content": {
+              "json": "### 선택 게이트웨이의 최근 진단 로그\n로그 작업 영역을 선택하고 게이트웨이의 진단 설정을 먼저 구성하세요. 메시지에 협상·재연결·라우팅 변경이 포함될 수 있습니다. 이벤트 수를 장애 건수로 해석하지 마세요."
+            }
+          },
+          {
+            "type": 3,
+            "name": "vpn-logs",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "선택 VPN 게이트웨이의 최근 이벤트 100건",
+              "query": "let NetworkLogs = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceProvider:string, Category:string, Message:string) []),\n    AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProvider =~ 'MICROSOFT.NETWORK'\n| where Category in ('GatewayDiagnosticLog', 'TunnelDiagnosticLog', 'RouteDiagnosticLog', 'IKEDiagnosticLog', 'P2SDiagnosticLog', 'PeeringRouteLog')\n| extend ['메시지'] = coalesce(tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', '')))\n| extend ['리소스 ID'] = _ResourceId;\nNetworkLogs\n| where _ResourceId =~ '{VpnGateway}'\n| project ['시간 UTC'] = TimeGenerated, ['범주'] = Category, ['메시지']\n| order by ['시간 UTC'] desc\n| take 100",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "peering-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "peering"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "peering-note",
+            "content": {
+              "json": "## VNet Peering\n각 행은 로컬 VNet에서 원격 VNet으로 향하는 **한 방향의 피어링**입니다. 양쪽 VNet에 대한 조회 권한이 있으면 반대 방향도 별도 행으로 표시됩니다. 원격이 다른 구독·테넌트에 있고 권한이 없으면 반대편은 확인할 수 없습니다.\n\n**Connected는 제어 평면 상태이며 NSG·UDR·방화벽·DNS·VM 통신의 성공을 보장하지 않습니다.** 피어링 자체의 전용 처리량·지연 지표를 가정하지 않습니다. 아래 Connection Monitor 결과는 선택 범위의 모니터 전체이며 특정 피어링과 자동으로 매칭하지 않습니다. 해당 경로를 측정하는 테스트를 구성해야 합니다."
+            }
+          },
+          {
+            "type": 3,
+            "name": "peerings",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "방향별 연결·주소 공간 동기화·게이트웨이 전송 설정",
+              "query": "Resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| mv-expand peering = properties.virtualNetworkPeerings\n| extend State = tostring(peering.properties.peeringState),\n    Sync = tostring(peering.properties.peeringSyncLevel)\n| extend ['확인'] = case(State != 'Connected', '확인 필요: 미연결 또는 상태 없음',\n    isnotempty(Sync) and Sync != 'FullyInSync', '확인 필요: 주소 공간 동기화',\n    isempty(Sync), '연결됨: 동기화 상태 미보고', '연결됨: 구성 기준')\n| project ['로컬 VNet'] = name, ['피어링'] = tostring(peering.name), ['확인'],\n    ['피어링 상태'] = State, ['동기화 상태'] = Sync,\n    ['원격 VNet'] = tostring(peering.properties.remoteVirtualNetwork.id),\n    ['VNet 액세스'] = tostring(peering.properties.allowVirtualNetworkAccess),\n    ['전달 트래픽 허용'] = tostring(peering.properties.allowForwardedTraffic),\n    ['게이트웨이 전송 허용'] = tostring(peering.properties.allowGatewayTransit),\n    ['원격 게이트웨이 사용'] = tostring(peering.properties.useRemoteGateways),\n    ['리소스 그룹'] = resourceGroup, ['구독'] = subscriptionId,\n    id = tostring(peering.id)\n| order by ['확인'] asc, ['로컬 VNet'] asc, ['피어링'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 1,
+            "name": "connectivity-note",
+            "content": {
+              "json": "### 실제 통신 측정 (선택)\nNetwork Watcher Connection Monitor를 구성하고 **같은 로그 작업 영역**으로 전송해야 합니다. 구독·리소스 그룹 필터는 테스트 대상 VM이 아니라 **Connection Monitor 리소스**에 적용됩니다. RTT는 검사 수 가중 평균이며 측정 지연·실패율은 해당 테스트 경로 기준입니다."
+            }
+          },
+          {
+            "type": 3,
+            "name": "connectivity-coverage",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "Connection Monitor 측정 데이터 확인",
+              "query": "let Tests = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ConnectionMonitorResourceId:string,\n        SourceName:string, DestinationName:string, TestGroupName:string, TestConfigurationName:string,\n        ChecksFailed:int, ChecksTotal:int, AvgRoundTripTimeMs:real, TestResult:string) []),\n    NWConnectionMonitorTestResult\n| extend _ResourceId = coalesce(ConnectionMonitorResourceId, _ResourceId)\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups});\nTests\n| summarize ['결과 수'] = count(), ['마지막 측정 UTC'] = max(TimeGenerated)\n| extend ['측정 확인'] = iff(['결과 수'] == 0,\n    '측정 없음: Connection Monitor와 에이전트, 대상 작업 영역을 설정하세요. 피어링의 실제 통신 정상 여부는 알 수 없습니다.',\n    '실제 측정 결과가 있습니다. 대상 경로가 해당 피어링을 사용하는지 별도 확인하세요.')",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "connectivity",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "테스트별 실패율·평균 RTT",
+              "query": "let Tests = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ConnectionMonitorResourceId:string,\n        SourceName:string, DestinationName:string, TestGroupName:string, TestConfigurationName:string,\n        ChecksFailed:int, ChecksTotal:int, AvgRoundTripTimeMs:real, TestResult:string) []),\n    NWConnectionMonitorTestResult\n| extend _ResourceId = coalesce(ConnectionMonitorResourceId, _ResourceId)\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups});\nTests\n| summarize ['실패 검사 수'] = sum(ChecksFailed), ['전체 검사 수'] = sum(ChecksTotal),\n    ['평균 RTT ms'] = iff(sumif(ChecksTotal, isnotnull(AvgRoundTripTimeMs)) > 0,\n        sum(AvgRoundTripTimeMs * ChecksTotal) / sumif(ChecksTotal, isnotnull(AvgRoundTripTimeMs)), real(null)),\n    ['마지막 측정 UTC'] = max(TimeGenerated)\n    by ['모니터 ID'] = _ResourceId, ['테스트 그룹'] = TestGroupName,\n        ['테스트 구성'] = TestConfigurationName, ['원본'] = SourceName, ['대상'] = DestinationName\n| extend ['실패율 %'] = iff(['전체 검사 수'] > 0, round(100.0 * ['실패 검사 수'] / ['전체 검사 수'], 2), real(null))\n| order by ['실패율 %'] desc",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "expressroute-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "expressroute"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "expressroute-note",
+            "content": {
+              "json": "## ExpressRoute\n회선과 ExpressRoute 가상 네트워크 게이트웨이를 각각 선택하세요. **회선과 게이트웨이는 자동 연결되지 않으므로** 연결 구성 표의 회선 ID와 게이트웨이 ID를 대조하세요.\n\nBGP/ARP 가용성은 공급자가 보고하는 백분율 그대로 표시합니다(0~100). 기본·보조 피어를 분리하고 Private/비-Private 피어링을 나눠 봅니다. 비-Private에는 Microsoft 피어링 등이 포함됩니다. 해당 유형이 없으면 그래프가 비어 있습니다. 트래픽은 **비트/초**이며 VPN의 바이트/초와 다릅니다. 회선 프로비저닝 성공은 실제 BGP/데이터 경로의 정상 여부를 의미하지 않습니다."
+            }
+          },
+          {
+            "type": 9,
+            "name": "expressroute-selectors",
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "Circuit",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Circuit",
+                  "label": "ExpressRoute 회선",
+                  "type": 5,
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "query": "Resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| project id, name\n| order by name asc",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "crossComponentResources": [
+                    "{Subscriptions}"
+                  ],
+                  "value": null,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  }
+                },
+                {
+                  "id": "ErGateway",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ErGateway",
+                  "label": "ExpressRoute 게이트웨이",
+                  "type": 5,
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "query": "Resources\n| where type =~ 'microsoft.network/virtualnetworkgateways'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| where properties.gatewayType =~ 'ExpressRoute'\n| project id, name\n| order by name asc",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "crossComponentResources": [
+                    "{Subscriptions}"
+                  ],
+                  "value": null,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  }
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            }
+          },
+          {
+            "type": 3,
+            "name": "circuit-inventory",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "ExpressRoute 회선·공급자 프로비저닝 상태",
+              "query": "Resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| project ['회선'] = name, ['공급자'] = tostring(properties.serviceProviderProperties.serviceProviderName),\n    ['피어링 위치'] = tostring(properties.serviceProviderProperties.peeringLocation),\n    ['대역폭 Mbps'] = toint(properties.serviceProviderProperties.bandwidthInMbps),\n    ['공급자 프로비저닝'] = tostring(properties.serviceProviderProvisioningState),\n    ['회선 상태'] = tostring(properties.circuitProvisioningState),\n    ['배포 상태'] = tostring(properties.provisioningState), ['SKU'] = tostring(sku.name), id\n| order by ['회선'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "circuit-peerings",
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "선택 회선의 피어링 설정",
+              "query": "Resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| where subscriptionId in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})\n| where id =~ '{Circuit}'\n| mv-expand peering = properties.peerings\n| project ['회선'] = name, ['피어링'] = tostring(peering.name),\n    ['유형'] = tostring(peering.properties.peeringType), ['상태'] = tostring(peering.properties.state),\n    ['피어 ASN'] = tostring(peering.properties.peerASN), ['Azure ASN'] = tostring(peering.properties.azureASN),\n    ['기본 접두사'] = tostring(peering.properties.primaryPeerAddressPrefix),\n    ['보조 접두사'] = tostring(peering.properties.secondaryPeerAddressPrefix),\n    ['VLAN'] = toint(peering.properties.vlanId)\n| order by ['피어링'] asc",
+              "size": 0,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscriptions}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-private-bgp",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-private-bgp",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Availability-BgpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "Peer",
+                  "columnName": "BGP 가용성 (%)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "Private 피어별 BGP 가용성 (%)",
+              "filters": [
+                {
+                  "id": "private-bgp",
+                  "key": "PeeringType",
+                  "operator": 0,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-private-arp",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-private-arp",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Availability-ArpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "Peer",
+                  "columnName": "ARP 가용성 (%)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "Private 피어별 ARP 가용성 (%)",
+              "filters": [
+                {
+                  "id": "private-arp",
+                  "key": "PeeringType",
+                  "operator": 0,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-other-bgp",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-other-bgp",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Availability-BgpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "Peer",
+                  "columnName": "BGP 가용성 (%)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "비-Private (Microsoft 등) 피어별 BGP 가용성 (%)",
+              "filters": [
+                {
+                  "id": "other-bgp",
+                  "key": "PeeringType",
+                  "operator": 1,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-other-arp",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-other-arp",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Availability-ArpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "Peer",
+                  "columnName": "ARP 가용성 (%)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "비-Private (Microsoft 등) 피어별 ARP 가용성 (%)",
+              "filters": [
+                {
+                  "id": "other-arp",
+                  "key": "PeeringType",
+                  "operator": 1,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-private-traffic",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-private-traffic",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Traffic-BitsInPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "DeviceRole",
+                  "columnName": "Azure 수신 (비트/초)",
+                  "splitByLimit": 20
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Traffic-BitsOutPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "DeviceRole",
+                  "columnName": "Azure 송신 (비트/초)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "Private 기본·보조 장치별 수신·송신 (비트/초)",
+              "filters": [
+                {
+                  "id": "private-traffic",
+                  "key": "PeeringType",
+                  "operator": 0,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-other-traffic",
+            "conditionalVisibility": {
+              "parameterName": "Circuit",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-other-traffic",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuit",
+              "resourceIds": [
+                "{Circuit}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Traffic-BitsInPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "DeviceRole",
+                  "columnName": "Azure 수신 (비트/초)",
+                  "splitByLimit": 20
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits-Circuit Traffic-BitsOutPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "DeviceRole",
+                  "columnName": "Azure 송신 (비트/초)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "비-Private 기본·보조 장치별 수신·송신 (비트/초)",
+              "filters": [
+                {
+                  "id": "other-traffic",
+                  "key": "PeeringType",
+                  "operator": 1,
+                  "values": [
+                    "private"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": 1,
+            "name": "er-gateway-note",
+            "content": {
+              "json": "### ExpressRoute 게이트웨이 지표\n아래 지표는 기존 VNet 게이트웨이 SKU 대상입니다. ErGwScale·Virtual WAN 게이트웨이에는 적용하지 않습니다. 해당 SKU에서는 지표가 없을 수 있습니다."
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-gateway-cpu",
+            "conditionalVisibility": {
+              "parameterName": "ErGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-gateway-cpu",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateway",
+              "resourceIds": [
+                "{ErGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Performance-ExpressRouteGatewayCpuUtilization",
+                  "aggregation": 4,
+                  "splitBy": "roleInstance",
+                  "columnName": "게이트웨이 CPU (%)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "게이트웨이 인스턴스별 CPU (%)"
+            }
+          },
+          {
+            "type": 10,
+            "name": "er-gateway-throughput",
+            "conditionalVisibility": {
+              "parameterName": "ErGateway",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "MetricsItem/2.0",
+              "chartId": "er-gateway-throughput",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateway",
+              "resourceIds": [
+                "{ErGateway}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways-Performance-ExpressRouteGatewayBitsPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "roleInstance",
+                  "columnName": "게이트웨이 수신 (비트/초)",
+                  "splitByLimit": 20
+                }
+              ],
+              "title": "게이트웨이 인스턴스별 수신 (비트/초)"
+            }
+          },
+          {
+            "type": 3,
+            "name": "er-route-logs",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "선택 회선의 최근 피어링 경로 로그 100건",
+              "query": "let NetworkLogs = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceProvider:string, Category:string, Message:string) []),\n    AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProvider =~ 'MICROSOFT.NETWORK'\n| where Category in ('GatewayDiagnosticLog', 'TunnelDiagnosticLog', 'RouteDiagnosticLog', 'IKEDiagnosticLog', 'P2SDiagnosticLog', 'PeeringRouteLog')\n| extend ['메시지'] = coalesce(tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', '')))\n| extend ['리소스 ID'] = _ResourceId;\nNetworkLogs\n| where _ResourceId =~ '{Circuit}' and Category == 'PeeringRouteLog'\n| project ['시간 UTC'] = TimeGenerated, ['범주'] = Category, ['메시지']\n| order by ['시간 UTC'] desc\n| take 100",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "logs-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "logs"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "logs-note",
+            "content": {
+              "json": "## 진단·변경 로그\n상단에서 로그 작업 영역을 선택하세요. 미선택 시 로그 패널은 숨겨집니다. 진단 설정과 구독 활동 로그 내보내기는 자동 생성하지 않습니다.\n\n아직 생성되지 않은 테이블은 `union isfuzzy=true`로 조회하며 Azure의 경고가 표시될 수 있습니다. **데이터 없음은 정상 또는 이벤트 없음 판정이 아닙니다.** 권한 오류는 그대로 표시됩니다. 이벤트 수는 오류 수가 아닙니다. 표의 시간은 UTC입니다."
+            }
+          },
+          {
+            "type": 3,
+            "name": "diagnostics-coverage",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "네트워크 진단 로그 수집 확인",
+              "query": "let NetworkLogs = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceProvider:string, Category:string, Message:string) []),\n    AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProvider =~ 'MICROSOFT.NETWORK'\n| where Category in ('GatewayDiagnosticLog', 'TunnelDiagnosticLog', 'RouteDiagnosticLog', 'IKEDiagnosticLog', 'P2SDiagnosticLog', 'PeeringRouteLog')\n| extend ['메시지'] = coalesce(tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', '')))\n| extend ['리소스 ID'] = _ResourceId;\nNetworkLogs\n| summarize ['로그 수'] = count(), ['마지막 수집 UTC'] = max(TimeGenerated)\n| extend ['수집 확인'] = iff(['로그 수'] == 0,\n    '데이터 없음: 시간 범위·권한·진단 설정·작업 영역을 확인하세요. 정상 상태를 의미하지 않습니다.',\n    '선택 범위에서 로그가 수집되었습니다. 로그 존재만으로 정상 상태를 판정하지 않습니다.')",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "diagnostics-timeline",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "범주별 진단 이벤트 추이",
+              "query": "let NetworkLogs = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceProvider:string, Category:string, Message:string) []),\n    AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProvider =~ 'MICROSOFT.NETWORK'\n| where Category in ('GatewayDiagnosticLog', 'TunnelDiagnosticLog', 'RouteDiagnosticLog', 'IKEDiagnosticLog', 'P2SDiagnosticLog', 'PeeringRouteLog')\n| extend ['메시지'] = coalesce(tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', '')))\n| extend ['리소스 ID'] = _ResourceId;\nNetworkLogs\n| summarize ['이벤트 수'] = count() by bin(TimeGenerated, {TimeRange:grain}), Category\n| order by TimeGenerated asc",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "timechart",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "diagnostics-recent",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "최근 네트워크 진단 이벤트 250건",
+              "query": "let NetworkLogs = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceProvider:string, Category:string, Message:string) []),\n    AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProvider =~ 'MICROSOFT.NETWORK'\n| where Category in ('GatewayDiagnosticLog', 'TunnelDiagnosticLog', 'RouteDiagnosticLog', 'IKEDiagnosticLog', 'P2SDiagnosticLog', 'PeeringRouteLog')\n| extend ['메시지'] = coalesce(tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', '')))\n| extend ['리소스 ID'] = _ResourceId;\nNetworkLogs\n| project ['시간 UTC'] = TimeGenerated, ['범주'] = Category, ['리소스 ID'], ['메시지']\n| order by ['시간 UTC'] desc\n| take 250",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "activity-coverage",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "활동 로그 수집 확인",
+              "query": "let Changes = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceId:string, ResourceProviderValue:string, OperationNameValue:string, ActivityStatusValue:string, Caller:string, CorrelationId:string) []),\n    AzureActivity\n| extend _ResourceId = coalesce(_ResourceId, ResourceId)\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProviderValue =~ 'MICROSOFT.NETWORK'\n| where _ResourceId has_any ('virtualNetworkGateways', 'connections', 'expressRouteCircuits', 'virtualNetworks');\nChanges\n| summarize ['변경 이벤트 수'] = count(), ['마지막 수집 UTC'] = max(TimeGenerated)\n| extend ['수집 확인'] = iff(['변경 이벤트 수'] == 0,\n    '데이터 없음: 구독 활동 로그 내보내기·시간 범위·권한을 확인하세요. 변경 없음으로 단정할 수 없습니다.',\n    '선택 범위의 네트워크 활동 로그가 수집되었습니다.')",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          },
+          {
+            "type": 3,
+            "name": "activity-recent",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "생성·변경·삭제 등을 포함한 최근 네트워크 활동 250건",
+              "query": "let Changes = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceId:string, ResourceProviderValue:string, OperationNameValue:string, ActivityStatusValue:string, Caller:string, CorrelationId:string) []),\n    AzureActivity\n| extend _ResourceId = coalesce(_ResourceId, ResourceId)\n| where TimeGenerated {TimeRange}\n| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})\n| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})\n| where ResourceProviderValue =~ 'MICROSOFT.NETWORK'\n| where _ResourceId has_any ('virtualNetworkGateways', 'connections', 'expressRouteCircuits', 'virtualNetworks');\nChanges\n| project ['시간 UTC'] = TimeGenerated, ['작업'] = OperationNameValue,\n    ['상태'] = ActivityStatusValue, ['호출자'] = Caller,\n    ['리소스 ID'] = _ResourceId, ['상관 ID'] = CorrelationId\n| order by ['시간 UTC'] desc\n| take 250",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "visualization": "table",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": 12,
+      "name": "guide-section",
+      "conditionalVisibility": {
+        "parameterName": "Tab",
+        "comparison": "isEqualTo",
+        "value": "guide"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "name": "setup-guide",
+            "content": {
+              "json": "## 시작하기\n1. **조회 구독·리소스 그룹**을 지정하고 VPN/ExpressRoute 화면에서 리소스를 선택합니다.\n2. 구성 목록은 Reader, 지표는 Monitoring Reader 등 필요한 조회 권한이 있어야 합니다.\n3. 로그가 필요하면 Log Analytics 작업 영역을 선택하고 해당 작업 영역의 로그 조회 권한을 준비합니다.\n4. VPN Gateway 진단 설정: GatewayDiagnosticLog, TunnelDiagnosticLog, RouteDiagnosticLog, IKEDiagnosticLog, P2SDiagnosticLog 중 지원되는 범주를 작업 영역으로 보냅니다.\n5. ExpressRoute 회선: PeeringRouteLog를 작업 영역으로 보냅니다. 지원 범주는 리소스의 진단 설정에서 확인합니다.\n6. 구독의 활동 로그 진단 설정에서 Administrative 등을 같은 작업 영역으로 보냅니다.\n7. 피어링을 통한 실제 통신은 Connection Monitor 테스트·에이전트·출력 작업 영역을 구성합니다.\n\n## 해석과 제한\n- ARM 배포는 **공유 Workbook 하나만 생성**합니다. 네트워크·로그 설정·경고 규칙·에이전트는 만들거나 변경하지 않습니다.\n- 리소스 구성은 현재 스냅샷이며 지연 반영됩니다. 시점별 구성 이력·SLA 보고서가 아닙니다.\n- 다중 구독은 같은 로그인 컨텍스트의 조회 가능 구독을 대상으로 합니다. 테넌트 간 통합을 자동 보장하지 않습니다.\n- Resource Graph 표는 최대 1,000행입니다. 필터를 좁혀 조회하세요. Peering의 mv-expand는 서비스 한도에 영향을 받으므로 매우 큰 VNet은 개별 리소스에서도 확인하세요.\n- 지표 분할 시 상위 20개 시계열을 표시합니다. 전체 터널·피어 수가 더 많으면 Metrics 탐색기에서 개별 필터를 적용하세요.\n- 구성·로그·지표의 리소스 유형은 VNet 기반 VPN/ExpressRoute와 VNet Peering입니다. Virtual WAN, ExpressRoute Direct 포트, NSG/VNet Flow Logs 및 Azure Firewall 분석은 이 통합 화면의 범위에 포함하지 않습니다.\n- 로그 수집·보존·Connection Monitor에는 사용량 비용이 발생할 수 있습니다. Workspace를 선택하지 않아도 구성·네이티브 지표는 사용할 수 있습니다.\n- Workbook은 조회 화면이며 경보를 자동 전송하지 않습니다. 운영 경보는 Azure Monitor 경고 규칙으로 별도 구성하세요.\n\n## 출처\n[원본 Azure Firewall Workbook](https://github.com/Azure/Azure-Network-Security/tree/1f98d7a10514817932abdff168ea28ec5cfa847c/Azure%20Firewall/Workbook%20-%20Azure%20Firewall%20Monitor%20Workbook)의 매개변수·탭·Resource Graph·로그 조회 및 ARM 배포 구조를 기반으로 재구성했습니다. MIT 라이선스와 원본 스냅샷을 별도로 보존합니다.\n\n[설정 및 문제 해결](https://github.com/SeoanSon/azure-network-monitor-workbook-ko#readme) · [VPN 지표](https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-virtualnetworkgateways-metrics) · [ExpressRoute 지표](https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-expressroutecircuits-metrics)"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

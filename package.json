@@ -1,0 +1,16 @@
+{
+  "name": "azure-network-monitor-workbook-ko",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "한국어 Azure VPN, VNet Peering, ExpressRoute 통합 모니터링 Workbook",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "check": "node scripts/build.mjs --check"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
