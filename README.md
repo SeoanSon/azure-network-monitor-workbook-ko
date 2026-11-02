@@ -1,4 +1,4 @@
-# Azure 통합 네트워크 모니터링 Workbook (한국어)
+# Azure 통합 네트워크 모니터링 Workbook
 
 **VPN Gateway · VNet Peering · ExpressRoute**의 구성·성능·진단·변경을 한곳에서 조회하는 Azure Monitor Workbook입니다.
 
