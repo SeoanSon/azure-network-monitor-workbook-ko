@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createWorkbook, createTemplate, root, deployUrl, templateUrl, outputs } from '../scripts/build.mjs';
 import { metrics, metricSources } from '../scripts/metrics.mjs';
@@ -45,7 +46,7 @@ test('every navigation target has one visible tab group and Korean label', () =>
   for (const link of links) {
     assert.match(link.linkLabel, /[가-힣]/);
     assert.ok(names.has(link.cellValue));
-    assert.equal(items.filter(item => item.type === 12 && item.conditionalVisibility.value === link.subTarget).length, 1);
+    assert.equal(items.filter(item => item.type === 12 && item.conditionalVisibility?.value === link.subTarget).length, 1);
   }
   assert.equal(parameters.find(p => p.name === 'Tab').value, 'overview');
 });
@@ -318,5 +319,283 @@ test('the peering configuration table remains visible without a VPN gateway or l
     assert.equal(peering.content.queryType, 1);
     assert.deepEqual(peering.content.crossComponentResources, ['{Subscriptions}']);
     assert.ok(!peering.conditionalVisibility);
+  }
+});
+
+const s2sPanels = [
+  ['vpn-s2s-coverage', 'vpnS2sCoverage'],
+  ['vpn-s2s-tunnel-trend', 'vpnS2sTunnelTrend'],
+  ['vpn-s2s-tunnel-summary', 'vpnS2sTunnelSummary'],
+  ['vpn-s2s-tunnel-events', 'vpnS2sTunnelEvents'],
+  ['vpn-s2s-dpd-trend', 'vpnS2sDpdTrend'],
+  ['vpn-s2s-dpd-events', 'vpnS2sDpdEvents'],
+  ['vpn-s2s-ike-raw', 'vpnS2sIkeRaw'],
+  ['vpn-s2s-gateway-events', 'vpnS2sGatewayEvents'],
+];
+
+function requiredItem(name, candidates = items) {
+  const item = candidates.find(item => item.name === name);
+  assert.ok(item, `Missing item: ${name}`);
+  return item;
+}
+
+function s2sQuery(name) {
+  assert.equal(typeof queries[name], 'string', `Missing query export: ${name}`);
+  assert.ok(queries[name].length > 0, name);
+  return queries[name];
+}
+
+test('S2S diagnostics are a category-independent VPN group with eight workspace-scoped panels', () => {
+  const vpn = requiredItem('vpn-section');
+  const diagnostics = requiredItem('vpn-s2s-diagnostics', vpn.content.items);
+  assert.equal(diagnostics.type, 12);
+  assert.equal(diagnostics.content.version, 'NotebookGroup/1.0');
+  assert.equal(diagnostics.conditionalVisibility, undefined);
+  requiredItem('vpn-s2s-log-note', diagnostics.content.items);
+  requiredItem('vpn-s2s-workspace-empty', diagnostics.content.items);
+  requiredItem('vpn-s2s-gateway-empty', diagnostics.content.items);
+  const panels = requiredItem('vpn-s2s-log-panels', diagnostics.content.items);
+  assert.equal(panels.type, 12);
+  assert.equal(panels.content.version, 'NotebookGroup/1.0');
+  assert.deepEqual(panels.conditionalVisibility, {
+    parameterName: 'VpnGateway', comparison: 'isNotEqualTo', value: '',
+  });
+  assert.deepEqual(panels.content.items.map(item => item.name).sort(), s2sPanels.map(([name]) => name).sort());
+  for (const [name, queryName] of s2sPanels) {
+    const panel = requiredItem(name, panels.content.items);
+    assert.equal(panel.type, 3, name);
+    assert.equal(panel.content.queryType, 0, name);
+    assert.equal(panel.content.query, s2sQuery(queryName), name);
+    assert.equal(panel.content.timeContextFromParameter, 'TimeRange', name);
+    assert.deepEqual(panel.content.crossComponentResources, ['{Workspace}'], name);
+    assert.deepEqual(panel.conditionalVisibility, {
+      parameterName: 'Workspace', comparison: 'isNotEqualTo', value: '',
+    }, name);
+  }
+});
+
+test('S2S instructions and panels respect every workspace/gateway selection in all four viewpoints', () => {
+  for (const { value: MonitoringCategory } of categories) {
+    for (const Workspace of ['', selections.Workspace]) {
+      for (const VpnGateway of ['', selections.VpnGateway]) {
+        const context = `${MonitoringCategory}/workspace=${!!Workspace}/gateway=${!!VpnGateway}`;
+        const visible = visibleItems(workbook.items, {
+          ...selections, Tab: 'vpn', MonitoringCategory, Workspace, VpnGateway,
+        });
+        const visibleNames = new Set(visible.map(item => item.name));
+        assert.ok(visibleNames.has('vpn-s2s-diagnostics'), context);
+        assert.ok(visibleNames.has('vpn-s2s-log-note'), context);
+        assert.equal(visibleNames.has('vpn-s2s-workspace-empty'), !Workspace, context);
+        assert.equal(visibleNames.has('vpn-s2s-gateway-empty'), !VpnGateway, context);
+        for (const [name] of s2sPanels) {
+          assert.equal(visibleNames.has(name), !!Workspace && !!VpnGateway, `${context}/${name}`);
+        }
+      }
+    }
+  }
+  for (const Tab of ['overview', 'resources', 'peering', 'expressroute', 'logs', 'guide']) {
+    const visible = visibleItems(workbook.items, { ...selections, Tab });
+    assert.ok(!visible.some(item => item.name.startsWith('vpn-s2s-')), Tab);
+  }
+});
+
+test('every S2S query tolerates missing diagnostics schemas and retains exact shared scope filters', () => {
+  for (const [, queryName] of s2sPanels) {
+    const query = s2sQuery(queryName);
+    assert.match(query, /union\s+isfuzzy=true/, queryName);
+    assert.match(query, /datatable\s*\([^]*?\)\s*\[\s*\]/, queryName);
+    assert.match(query, /\bAzureDiagnostics\b/, queryName);
+    assert.match(query, /_ResourceId\s*=\s*coalesce\s*\(\s*tostring\s*\(\s*column_ifexists\s*\(\s*['_"]_ResourceId['"]/, queryName);
+    assert.match(query, /column_ifexists\s*\(\s*['"]ResourceId['"]/, queryName);
+    assert.ok(query.includes(queries.subscriptionFilter("tostring(split(_ResourceId, '/')[2])")), queryName);
+    assert.ok(query.includes("| where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})"), queryName);
+    assert.match(query, /TimeGenerated \{TimeRange\}/, queryName);
+    assert.match(query, /isnotempty\s*\(\s*['"]\{VpnGateway\}['"]\s*\)/, queryName);
+    assert.match(query, /_ResourceId\s*=~\s*['"]\{VpnGateway\}['"]/, queryName);
+    for (const column of ['Message', 'OperationName', 'remoteIP_s', 'instance_s', 'Level']) {
+      assert.match(query, new RegExp(`column_ifexists\\s*\\(\\s*['"]${column}['"]`), `${queryName}/${column}`);
+    }
+    assert.doesNotMatch(query, /workspace\s*\(|\bsearch\s+in\s*\(/i, queryName);
+  }
+});
+
+test('S2S messages prioritize raw Message and IKE evidence retains peer and instance fallbacks', () => {
+  for (const [, queryName] of s2sPanels) {
+    const query = s2sQuery(queryName);
+    assert.match(query, /coalesce\s*\(\s*tostring\s*\(\s*column_ifexists\s*\(\s*['"]Message['"]/, queryName);
+  }
+  for (const queryName of ['vpnS2sDpdTrend', 'vpnS2sDpdEvents', 'vpnS2sIkeRaw']) {
+    const query = s2sQuery(queryName);
+    assert.ok(query.includes('(원문에서 피어 확인)'), queryName);
+    assert.match(query, /(?:Instance|인스턴스)\S*\s*=\s*(?:coalesce|iff|case)\s*\(/i, queryName);
+    assert.match(query, /IKEDiagnosticLog/, queryName);
+  }
+  assert.match(s2sQuery('vpnS2sIkeRaw'), /(?:Message|메시지|원문)/);
+});
+
+test('S2S tunnel and DPD trends use selected time grain and preserve peer/instance dimensions', () => {
+  for (const [name, queryName] of [
+    ['vpn-s2s-tunnel-trend', 'vpnS2sTunnelTrend'],
+    ['vpn-s2s-dpd-trend', 'vpnS2sDpdTrend'],
+  ]) {
+    assert.equal(requiredItem(name).content.visualization, 'timechart', name);
+    const query = s2sQuery(queryName);
+    assert.match(query, /summarize[^]*\bby\b[^]*bin\s*\(\s*TimeGenerated\s*,\s*\{TimeRange:grain\}\s*\)/, queryName);
+    const dimensions = query.slice(query.lastIndexOf('summarize'));
+    assert.match(dimensions, /Peer|피어/i, queryName);
+    assert.match(dimensions, /Instance|인스턴스/i, queryName);
+    assert.doesNotMatch(dimensions, /\b(?:take|top)\s+\d+/i, queryName);
+  }
+  assert.match(s2sQuery('vpnS2sTunnelTrend'), /TunnelDiagnosticLog/);
+  assert.match(s2sQuery('vpnS2sTunnelSummary'), /TunnelDiagnosticLog/);
+  assert.match(s2sQuery('vpnS2sTunnelSummary'), /summarize/);
+});
+
+test('S2S detail panels select the latest 1000 events before displaying chronological order', () => {
+  for (const queryName of ['vpnS2sTunnelEvents', 'vpnS2sDpdEvents', 'vpnS2sIkeRaw', 'vpnS2sGatewayEvents']) {
+    const query = s2sQuery(queryName);
+    const latest = /(?:\|\s*top\s+1000\s+by\s+([^\r\n]+?)\s+desc\b|\|\s*(?:order|sort)\s+by\s+([^\r\n]+?)\s+desc\s*\|\s*(?:take|limit)\s+1000\b)/i.exec(query);
+    assert.ok(latest, `${queryName}: select newest 1000 first`);
+    const chronological = /\|\s*(?:order|sort)\s+by\s+([^\r\n]+?)\s+asc\b/i.exec(query.slice(latest.index + latest[0].length));
+    assert.ok(chronological, `${queryName}: then display oldest to newest`);
+    const newestColumn = (latest[1] ?? latest[2]).trim();
+    const oldestColumn = chronological[1].trim();
+    if (newestColumn !== oldestColumn) {
+      const projection = query.slice(latest.index + latest[0].length, latest.index + latest[0].length + chronological.index);
+      assert.ok(projection.includes(`${oldestColumn} = ${newestColumn}`), `${queryName}: chronological column must be the same timestamp`);
+    }
+  }
+  assert.match(s2sQuery('vpnS2sTunnelEvents'), /TunnelDiagnosticLog/);
+  assert.match(s2sQuery('vpnS2sGatewayEvents'), /GatewayDiagnosticLog/);
+});
+
+test('S2S coverage counts all three diagnostic categories with first/last evidence and zero-data warnings', () => {
+  const query = s2sQuery('vpnS2sCoverage');
+  for (const category of ['TunnelDiagnosticLog', 'IKEDiagnosticLog', 'GatewayDiagnosticLog']) {
+    assert.match(query, new RegExp(`countif\\s*\\([^\\n]*['"]${category}['"]`), category);
+  }
+  assert.match(query, /min\s*\(\s*TimeGenerated\s*\)/);
+  assert.match(query, /max\s*\(\s*TimeGenerated\s*\)/);
+  assert.match(query, /(?:==\s*0|0\s*==)/);
+  assert.match(query, /Tunnel[^]*IKE|IKE[^]*Tunnel/);
+  assert.match(query, /데이터 없음|수집 없음|로그 없음|확인|경고/);
+  assert.match(query, /정상[^]*아니|정상[^]*않|의미하지|정상 판정 불가/);
+});
+
+test('DPD patterns are exported once and embedded in the shared IKE KQL classifier', () => {
+  assert.ok(queries.dpdPatterns && typeof queries.dpdPatterns === 'object');
+  assert.deepEqual(Object.keys(queries.dpdPatterns).sort(), ['dpd', 'failure', 'nonEvent', 'timeout']);
+  const classification = s2sQuery('vpnIkeClassification');
+  for (const [name, pattern] of Object.entries(queries.dpdPatterns)) {
+    assert.equal(typeof pattern, 'string', name);
+    assert.ok(pattern.length > 0, name);
+    // KQL verbatim strings keep backslashes; ordinary string literals escape them.
+    assert.ok(classification.includes(pattern) || classification.includes(pattern.replaceAll('\\', '\\\\')), name);
+  }
+  assert.match(classification, /\bcase\s*\(/);
+  assert.match(classification, /matches regex/);
+  for (const queryName of ['vpnS2sDpdTrend', 'vpnS2sDpdEvents']) {
+    assert.ok(s2sQuery(queryName).includes(classification), queryName);
+  }
+  assert.doesNotMatch(s2sQuery('vpnS2sIkeRaw'), /where isnotempty\(Signal\)|matches regex/);
+  for (const queryName of ['vpnS2sDpdTrend', 'vpnS2sDpdEvents']) {
+    assert.doesNotMatch(s2sQuery(queryName), /(?:\[['"](?:장애\s*시간|중단\s*시간|현재\s*상태|근본\s*원인)['"]\]|\b(?:Downtime|RootCause|CurrentStatus)\b)\s*=/i, queryName);
+  }
+});
+
+test('DPD heuristic distinguishes synthetic failures from normal, configuration and negative messages', () => {
+  const patterns = Object.fromEntries(Object.entries(queries.dpdPatterns).map(([name, pattern]) => [name, new RegExp(pattern)]));
+  const classify = message => {
+    const text = message.toLowerCase();
+    if (patterns.nonEvent.test(text)) return '';
+    const dpd = patterns.dpd.test(text);
+    if (dpd && patterns.timeout.test(text)) return 'dpd-timeout';
+    if (dpd && patterns.failure.test(text)) return 'dpd-failure';
+    if (!dpd && (patterns.timeout.test(text) || patterns.failure.test(text))) return 'ike-related';
+    return '';
+  };
+  const cases = [
+    ['Sending DPD request', ''],
+    ['Received DPD response', ''],
+    ['Received DPD reply', ''],
+    ['DPD packet sent successfully', ''],
+    ['DPD timeout configured to 30 seconds', ''],
+    ['DPD timeout settings updated', ''],
+    ['DPD timeout interval is 30 seconds', ''],
+    ['No DPD timeout observed', ''],
+    ['No DPD failure observed', ''],
+    ['DPD timeout not detected', ''],
+    ['DPD timeout disabled', ''],
+    ['DPD timeout', 'dpd-timeout'],
+    ['DPD timed out for peer', 'dpd-timeout'],
+    ['Dead peer detection failed', 'dpd-failure'],
+    ['DPD retransmission limit exceeded', 'dpd-timeout'],
+    ['DPD peer not responding', 'dpd-timeout'],
+    ['DPD timer expired', 'dpd-timeout'],
+    ['DPD failure', 'dpd-failure'],
+    ['DPD unresponsive', 'dpd-failure'],
+    ['IKE negotiation timed out', 'ike-related'],
+    ['IKE authentication failed', 'ike-related'],
+    ['TunnelDisconnected', ''],
+    ['', ''],
+  ];
+  for (const [message, expected] of cases) assert.equal(classify(message), expected, message);
+});
+
+test('ARM workbook serialization preserves all panels and public parameterized defaults', () => {
+  const template = createTemplate(workbook);
+  const data = structuredClone(template.variables.workbookData);
+  const armParameters = data.items.find(item => item.name === 'global-filters').content.parameters;
+  for (const name of ['Subscriptions', 'Workspace']) {
+    armParameters.find(p => p.name === name).value = structuredClone(parameters.find(p => p.name === name).value);
+  }
+  armParameters.find(p => p.name === 'MonitoringCategory').jsonData = armParameters.find(p => p.name === 'MonitoringCategory').jsonData.slice(1);
+  assert.deepEqual(JSON.parse(JSON.stringify(data)), workbook);
+  assert.equal(template.resources[0].properties.serializedData, "[string(variables('workbookData'))]");
+  for (const body of [JSON.stringify(workbook), JSON.stringify(template)]) {
+    assert.doesNotMatch(body, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  }
+  assert.equal(parameters.find(p => p.name === 'Workspace').value, '');
+  assert.equal(parameters.find(p => p.name === 'VpnGateway').value, null);
+});
+
+test('P2S performance panels move intact into an explicit-load supplement, not the cost viewpoint', () => {
+  const performance = requiredItem('vpn-performance');
+  const supplement = requiredItem('vpn-p2s-supplement', performance.content.items);
+  assert.equal(supplement.type, 12);
+  assert.equal(supplement.content.version, 'NotebookGroup/1.0');
+  assert.equal(supplement.conditionalVisibility, undefined);
+  assert.equal(supplement.content.loadType, 'explicit');
+  assert.equal(supplement.content.loadButtonText, 'P2S 보조 지표 펼치기');
+  assert.deepEqual(supplement.content.items.map(item => item.name), ['vpn-p2s', 'vpn-p2s-bandwidth']);
+  assert.ok(!performance.content.items.some(item => ['vpn-p2s', 'vpn-p2s-bandwidth'].includes(item.name)));
+  assert.ok(requiredItem('vpn-cost').content.items.some(item => item.name === 'cost-vpn-p2s-bandwidth'));
+});
+
+test('HEAD metrics, non-VPN content, original VPN operations, license and upstream remain unchanged', () => {
+  const headFile = path => execFileSync('git', ['show', `HEAD:${path}`], { cwd: root });
+  const head = JSON.parse(headFile('network-monitor.workbook').toString('utf8'));
+  const headItems = flatten(head.items);
+  const byName = list => [...list].sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(byName(items.filter(item => item.type === 10)), byName(headItems.filter(item => item.type === 10)));
+  const withoutEditableOverviewText = item => {
+    const copy = structuredClone(item);
+    for (const child of flatten([copy])) {
+      if (['overview-complementary', 'overview-framework'].includes(child.name)) delete child.content.json;
+    }
+    return copy;
+  };
+  assert.deepEqual(
+    workbook.items.filter(item => item.name !== 'vpn-section').map(withoutEditableOverviewText),
+    head.items.filter(item => item.name !== 'vpn-section').map(withoutEditableOverviewText),
+  );
+  assert.deepEqual(requiredItem('vpn-operations'), requiredItem('vpn-operations', headItems));
+  const upstreamPaths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'LICENSE', 'upstream'], {
+    cwd: root, encoding: 'utf8',
+  }).trim().split(/\r?\n/).filter(Boolean);
+  assert.ok(upstreamPaths.includes('LICENSE'));
+  assert.ok(upstreamPaths.some(path => path.startsWith('upstream/')));
+  for (const path of upstreamPaths) {
+    assert.deepEqual(readFileSync(resolve(root, ...path.split('/'))), headFile(path), path);
   }
 });

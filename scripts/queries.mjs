@@ -133,6 +133,103 @@ NetworkLogs
 | order by ['시간 UTC'] desc
 | take 100`;
 
+const vpnS2sBase = `union isfuzzy=true
+    (datatable(TimeGenerated:datetime, _ResourceId:string, ResourceId:string, Category:string, Message:string) []),
+    AzureDiagnostics
+| extend _ResourceId = coalesce(tostring(column_ifexists('_ResourceId', '')), tostring(column_ifexists('ResourceId', '')))
+${logScope}
+| where isnotempty('{VpnGateway}') and _ResourceId =~ '{VpnGateway}'
+| extend Category = tostring(column_ifexists('Category', '')),
+    OperationName = tostring(column_ifexists('OperationName', '')),
+    Gateway = coalesce(tostring(column_ifexists('Resource', '')), tostring(split(_ResourceId, '/')[8])),
+    remoteIP_s = tostring(column_ifexists('remoteIP_s', '')),
+    instance_s = tostring(column_ifexists('instance_s', '')),
+    Message = coalesce(tostring(column_ifexists('Message', '')), tostring(column_ifexists('msg_s', '')), tostring(column_ifexists('message_s', '')), tostring(column_ifexists('properties_s', ''))),
+    Level = tostring(column_ifexists('Level', ''))`;
+
+const vpnTunnelBase = `${vpnS2sBase}
+| where Category == 'TunnelDiagnosticLog'
+| where OperationName in ('TunnelConnected', 'TunnelDisconnected')
+| extend Peer = iff(isempty(remoteIP_s), '(피어 정보 없음)', remoteIP_s),
+    Instance = iff(isempty(instance_s), '(인스턴스 정보 없음)', instance_s)`;
+
+const vpnIkeBase = `${vpnS2sBase}
+| where Category == 'IKEDiagnosticLog'
+| extend Peer = iff(isempty(remoteIP_s), '(원문에서 피어 확인)', remoteIP_s),
+    Instance = iff(isempty(instance_s), '(인스턴스 정보 없음)', instance_s)`;
+
+export const dpdPatterns = {
+  dpd: String.raw`\b(dpd|dead\s+peer\s+detection)\b`,
+  timeout: String.raw`\b(timeout|timed[\s-]*out|time-out|no\s+response|not\s+responding|retry\s+limit|retransmi[a-z]*\s+(limit\s+)?(exceeded|exhausted)|peer\s+unreachable|timer\s+expired)\b`,
+  failure: String.raw`\b(failed|failure|unresponsive)\b`,
+  nonEvent: String.raw`\b(config[a-z]*|setting[s]?|interval)\b|\bno\s+(dpd\s+)?(timeout|failure)\b|\b(timeout|failure)\s+(not\s+detected|disabled)\b`,
+};
+
+export const vpnIkeClassification = `| extend Text = tolower(Message)
+| extend HasDpd = Text matches regex @'${dpdPatterns.dpd}',
+    HasTimeout = Text matches regex @'${dpdPatterns.timeout}',
+    HasFailure = Text matches regex @'${dpdPatterns.failure}',
+    NonEvent = Text matches regex @'${dpdPatterns.nonEvent}'
+| extend Signal = case(
+    not(NonEvent) and HasDpd and HasTimeout, 'DPD 시간 초과 의심 (문자열 휴리스틱)',
+    not(NonEvent) and HasDpd and HasFailure, 'DPD 실패 의심 (문자열 휴리스틱)',
+    not(NonEvent) and not(HasDpd) and (HasTimeout or HasFailure), '기타 IKE 시간 초과·실패 관련 (DPD 미확인)',
+    '')`;
+
+export const vpnS2sCoverage = `${vpnS2sBase}
+| where Category in ('TunnelDiagnosticLog', 'IKEDiagnosticLog', 'GatewayDiagnosticLog')
+| summarize TunnelRows = countif(Category == 'TunnelDiagnosticLog'),
+    IkeRows = countif(Category == 'IKEDiagnosticLog'),
+    GatewayRows = countif(Category == 'GatewayDiagnosticLog'),
+    FirstSeenUtc = min(TimeGenerated), LastSeenUtc = max(TimeGenerated)
+| extend CoverageNote = iff(TunnelRows == 0 or IkeRows == 0,
+    '터널/IKE 미관측: 지원 범주·진단 설정·작업 영역·기간·수집 지연·권한 확인. 정상 판정 불가.',
+    '기간 내 터널/IKE 로그 관측. 수집 완전성·현재 상태·DPD 원인 확정 불가.')`;
+
+export const vpnS2sTunnelTrend = `${vpnTunnelBase}
+| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), OperationName, Peer, Instance
+| extend Series = strcat(OperationName, ' | ', Peer, ' | ', Instance)
+| project TimeGenerated, Series, Events
+| order by TimeGenerated asc`;
+
+export const vpnS2sTunnelSummary = `${vpnTunnelBase}
+| summarize ConnectedEvents = countif(OperationName == 'TunnelConnected'),
+    DisconnectedEvents = countif(OperationName == 'TunnelDisconnected'),
+    FirstEventUtc = min(TimeGenerated), LastEventUtc = max(TimeGenerated)
+    by Gateway, _ResourceId, Peer, Instance
+| order by DisconnectedEvents desc, LastEventUtc desc`;
+
+export const vpnS2sTunnelEvents = `${vpnTunnelBase}
+| top 1000 by TimeGenerated desc
+| project TimeGenerated, Gateway, Peer, Instance, OperationName, Message, _ResourceId
+| order by TimeGenerated asc`;
+
+export const vpnS2sDpdTrend = `${vpnIkeBase}
+${vpnIkeClassification}
+| where isnotempty(Signal)
+| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Signal, Peer, Instance
+| extend Series = strcat(Signal, ' | ', Peer, ' | ', Instance)
+| project TimeGenerated, Series, Events
+| order by TimeGenerated asc`;
+
+export const vpnS2sDpdEvents = `${vpnIkeBase}
+${vpnIkeClassification}
+| where isnotempty(Signal)
+| top 1000 by TimeGenerated desc
+| project TimeGenerated, Gateway, Peer, Instance, Signal, Level, OperationName, Message, _ResourceId
+| order by TimeGenerated asc`;
+
+export const vpnS2sIkeRaw = `${vpnIkeBase}
+| top 1000 by TimeGenerated desc
+| project TimeGenerated, Gateway, Peer, Instance, Level, OperationName, Message, _ResourceId
+| order by TimeGenerated asc`;
+
+export const vpnS2sGatewayEvents = `${vpnS2sBase}
+| where Category == 'GatewayDiagnosticLog'
+| top 1000 by TimeGenerated desc
+| project TimeGenerated, Gateway, instance_s, OperationName, Message, _ResourceId
+| order by TimeGenerated asc`;
+
 export const selectedCircuitLogs = `${diagnosticsBase}
 NetworkLogs
 | where _ResourceId =~ '{Circuit}' and Category == 'PeeringRouteLog'

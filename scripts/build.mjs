@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import * as q from './queries.mjs';
 import { metrics } from './metrics.mjs';
-import { categories, frameworkCriteria, metricCriteriaTable, costCriteria, nonMetricCriteria } from './criteria.mjs';
+import { categories, frameworkCriteria, metricCriteriaTable, costCriteria, nonMetricCriteria, vpnS2sGuidance } from './criteria.mjs';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const repository = 'SeoanSon/azure-network-monitor-workbook-ko';
@@ -62,6 +62,10 @@ const metric = (name, title, resourceParameterName, keys, extra = {}) => ({
 const group = (name, value, items, parameterName = 'Tab') => ({
   type: 12, name, conditionalVisibility: visibility(parameterName, value),
   content: { version: 'NotebookGroup/1.0', groupType: 'editable', items },
+});
+const helperGroup = (name, items, extra = {}) => ({
+  type: 12, name,
+  content: { version: 'NotebookGroup/1.0', groupType: 'editable', ...extra, items },
 });
 
 export function createWorkbook() {
@@ -127,12 +131,32 @@ export function createWorkbook() {
         parameters('vpn-selector', [resourceParameter('VpnGateway', 'VPN 게이트웨이', 'microsoft.network/virtualnetworkgateways', "\n| where properties.gatewayType =~ 'Vpn'")]),
         graph('vpn-inventory', 'VPN 게이트웨이 구성', q.vpnInventory),
         group('vpn-performance', 'performance', [
-          text('vpn-performance-note', '### 성능 · 터널과 P2S 용량\n피크 시간의 처리량·연결 추이를 비교합니다. 단위와 구간 합계를 확인하고, 필요한 SKU 한도는 공식 문서와 실제 구성을 함께 확인하세요.'),
+          text('vpn-performance-note', '### 성능 · S2S 터널 중심\n연결별 터널 평균 대역폭과 수신·송신량을 먼저 확인하세요. 기존 지표 정의·집계·분할은 변경하지 않았습니다. 단위와 구간 합계, SKU 한도를 함께 확인하세요. P2S 성능 지표는 아래 보조 그룹을 명시적으로 열 때 조회합니다. S2S 연결을 구분할 때 ConnectionName과 실제 연결 구성을 대조하세요.'),
           metric('vpn-bandwidth', '연결별 터널 평균 대역폭 (바이트/초)', 'VpnGateway', ['vpnBandwidth']),
           metric('vpn-traffic', '연결별 터널 수신·송신량 (바이트/구간)', 'VpnGateway', ['vpnIngress', 'vpnEgress']),
-          metric('vpn-p2s', '프로토콜별 P2S 연결 (합계/구간)', 'VpnGateway', ['vpnP2s']),
-          metric('vpn-p2s-bandwidth', '인스턴스별 P2S 평균 대역폭 (바이트/초)', 'VpnGateway', ['vpnP2sBandwidth']),
+          helperGroup('vpn-p2s-supplement', [
+            metric('vpn-p2s', '프로토콜별 P2S 연결 (합계/구간)', 'VpnGateway', ['vpnP2s']),
+            metric('vpn-p2s-bandwidth', '인스턴스별 P2S 평균 대역폭 (바이트/초)', 'VpnGateway', ['vpnP2sBandwidth']),
+          ], { title: '보조 · P2S 성능 (선택)', loadType: 'explicit', loadButtonText: 'P2S 보조 지표 펼치기' }),
         ], 'MonitoringCategory'),
+        helperGroup('vpn-s2s-diagnostics', [
+          text('vpn-s2s-log-note', vpnS2sGuidance),
+          { ...text('vpn-s2s-workspace-empty', '**로그 작업 영역이 비어 있습니다.** 상단 Workspace(로그 작업 영역)를 선택하세요. 게이트웨이 진단 설정의 수집 대상과 일치해야 합니다.'), conditionalVisibility: visibility('Workspace', '') },
+          { ...text('vpn-s2s-gateway-empty', '**VPN 게이트웨이를 선택하세요.** 선택하지 않으면 로그 조회 결과로 상태를 판단할 수 없습니다.'), conditionalVisibility: visibility('VpnGateway', '') },
+          {
+            ...helperGroup('vpn-s2s-log-panels', [
+              logs('vpn-s2s-coverage', '수집 범위 · 선택 게이트웨이의 범주별 관측 건수', q.vpnS2sCoverage),
+              logs('vpn-s2s-tunnel-trend', '터널 연결·해제 이벤트 추이 · 피어/인스턴스별', q.vpnS2sTunnelTrend, 'timechart'),
+              logs('vpn-s2s-tunnel-summary', '터널 연결·해제 요약 · 피어/인스턴스별 (상태 아님)', q.vpnS2sTunnelSummary),
+              logs('vpn-s2s-tunnel-events', '터널 연결·해제 시간순 원문 · 최근 1,000건', q.vpnS2sTunnelEvents),
+              logs('vpn-s2s-dpd-trend', 'DPD 의심 / 기타 IKE 관련 이벤트 추이 · 원인 미확정', q.vpnS2sDpdTrend, 'timechart'),
+              logs('vpn-s2s-dpd-events', 'DPD 의심 / 기타 IKE 관련 상세 · 문자열 휴리스틱', q.vpnS2sDpdEvents),
+              logs('vpn-s2s-ike-raw', 'IKE 진단 원문 · 정상 DPD 포함 / 최근 1,000건', q.vpnS2sIkeRaw),
+              logs('vpn-s2s-gateway-events', '게이트웨이 구성·유지보수 상관분석용 원문 (인과관계 아님)', q.vpnS2sGatewayEvents),
+            ]),
+            conditionalVisibility: { parameterName: 'VpnGateway', comparison: 'isNotEqualTo', value: '' },
+          },
+        ]),
         group('vpn-cost', 'cost', [
           text('vpn-cost-note', `## 비용 · VPN 사용량과 용량 검토\n\n${costCriteria}`),
           metric('cost-vpn-bandwidth', '비용 참고: 터널 평균 대역폭 (바이트/초)', 'VpnGateway', ['vpnBandwidth']),

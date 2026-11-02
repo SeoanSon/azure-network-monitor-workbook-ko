@@ -62,7 +62,7 @@ ${categories.map(c => `| **${c.label}** | ${c.pillar} | ${c.purpose} | ${c.revie
 ### 사용 순서
 1. 여기서 공식 지표와 점검 기준을 확인합니다. 리소스 수·구성 목록은 **리소스 현황** 탭으로 이동했습니다.
 2. 상단 **모니터링 관점**에서 하나를 선택한 뒤 VPN·VNet 피어링·ExpressRoute·진단 로그 탭을 엽니다. 기본 선택은 **성능**입니다.
-3. 리소스 선택과 현재 구성 목록은 공통 맥락으로 유지되며, 상세 패널은 선택한 관점별로 바뀝니다. Overview의 기준 설명과 리소스 현황은 전체 기준을 항상 표시합니다.
+3. 리소스 선택과 현재 구성 목록은 공통 맥락으로 유지되며, 상세 패널은 선택한 관점별로 바뀝니다. VPN의 S2S 로그 진단은 모든 관점에서 표시하며 P2S 성능은 선택형 보조 그룹에서 조회합니다. Overview의 기준 설명과 리소스 현황은 전체 기준을 항상 표시합니다.
 4. 같은 지표가 성능과 비용 등 여러 관점에 재사용될 수 있습니다. 중복 조회는 별도의 지표나 비용 합산을 의미하지 않습니다.
 
 ### 공통 선정·판정 원칙
@@ -88,8 +88,23 @@ export const nonMetricCriteria = `## 지표가 아닌 보완 관측 항목
 | 가용성 | 경로별 실패율 | [NWConnectionMonitorTestResult: ChecksFailed, ChecksTotal](https://learn.microsoft.com/azure/azure-monitor/reference/tables/nwconnectionmonitortestresult) | sum(ChecksFailed)/sum(ChecksTotal) × 100. 전체 검사 0이면 null. 실제 테스트 경로의 결과이며 전체 서비스 SLA가 아님 |
 | 가용성·운영 | 피어링 연결·주소 공간 동기화·게이트웨이 전송 | [virtualNetworkPeerings 리소스 속성](https://learn.microsoft.com/azure/templates/microsoft.network/virtualnetworks/virtualnetworkpeerings) / Resource Graph | 현재 제어 평면 설정을 확인. Connected는 NSG·UDR·방화벽·DNS·데이터 평면 성공을 보장하지 않음 |
 | 운영 | VPN 터널·협상·경로·P2S 이벤트 | [VPN Gateway 지원 로그](https://learn.microsoft.com/azure/azure-monitor/reference/supported-logs/microsoft-network-virtualnetworkgateways-logs) / AzureDiagnostics | 상태 변화의 원인과 변경 시점을 조사. 이벤트 건수는 장애 건수가 아님 |
+| 모든 관점 (VPN 공통) | S2S 연결·해제 및 DPD/IKE 진단 | [VPN 진단 로그 문제 해결](https://learn.microsoft.com/en-us/troubleshoot/azure/vpn-gateway/troubleshoot-vpn-with-azure-diagnostics) / TunnelDiagnosticLog, IKEDiagnosticLog, GatewayDiagnosticLog | 피어·인스턴스별 이벤트 수와 원문 비교. DPD는 문자열 휴리스틱이며 원인 확정·현재 상태·중단 시간·가동률이 아님. 미관측은 정상 판정 불가 |
 | 운영 | ExpressRoute 피어링 경로 이벤트 | [ExpressRoute 지원 로그](https://learn.microsoft.com/azure/azure-monitor/reference/supported-logs/microsoft-network-expressroutecircuits-logs) / PeeringRouteLog | 경로 변경을 추적. 회선·피어링 설정과 함께 확인 |
 | 운영 | 네트워크 변경 이력 및 수집 여부 | [AzureActivity](https://learn.microsoft.com/azure/azure-monitor/reference/tables/azureactivity), 진단/Connection Monitor 수집 확인 | 누가 무엇을 변경했는지와 관측 가능 여부를 확인. 로그가 없다고 변경 없음 또는 정상으로 판단하지 않음 |
 | 비용 | 할당 SKU·회선 대역폭·피어링 목록 | Resource Graph 구성 + [Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/overview-cost-management) | 구성은 사용 지표를 해석하는 맥락. 실제 비용·피어링 전송량은 이 Workbook에서 미조회 |
 
 기준 문서 확인일: 2026-11-02. 지표 지원 여부는 실제 리소스의 SKU·설정 및 최신 공식 문서를 우선합니다.`;
+
+export const vpnS2sGuidance = `## S2S 터널 연결·해제 및 DPD 진단
+이 그룹은 **모니터링 관점 선택과 무관하게** VPN 탭에 표시됩니다. 위에서 **VPN 게이트웨이**, 수집 대상 **로그 작업 영역**, **시간 범위**를 선택하세요. 구독·리소스 그룹 필터는 작업 영역이 아니라 로그의 게이트웨이 리소스 ID에 적용됩니다.
+
+### 수집 전제 및 해석 한계
+- 게이트웨이의 진단 설정에서 \`TunnelDiagnosticLog\`, \`IKEDiagnosticLog\`, 필요 시 \`GatewayDiagnosticLog\`를 기존 Log Analytics 작업 영역으로 보내야 합니다. 이 배포는 **진단 설정을 만들거나 변경하지 않습니다**.
+- 정책 기반(PolicyBased) 게이트웨이는 \`GatewayDiagnosticLog\`, \`RouteDiagnosticLog\`만 지원합니다. 터널/IKE 범주가 지원되지 않는 경우를 장애 없음으로 해석하지 마세요.
+- 설정 전 로그는 소급 수집되지 않습니다. 수집 지연·보존 기간·권한·지원 범주·잘못 선택한 작업 영역도 확인하세요. 아직 테이블이 없으면 기존 쿼리와 동일하게 빈 스키마와 \`union isfuzzy=true\`를 사용하며 누락 테이블 경고가 표시될 수 있습니다. 권한 오류는 숨기지 않습니다.
+- **빈 차트/0건은 정상·연결 중·장애 없음의 증거가 아닙니다.** 범주별 수집 현황은 선택 시간 안에 관측한 로그만 보여 주며, 진단 설정 활성 여부를 증명하지 않습니다.
+- 연결·해제 차트는 상태가 아니라 **이벤트 수**입니다. 재연결·중복 이벤트와 창 시작 전 상태를 알 수 없으므로 가동률·중단 시간·현재 연결 상태를 계산하지 않습니다.
+- DPD 전용 구조화 필드를 가정하지 않습니다. IKE \`Message\`의 시간 초과·실패 문자열을 휴리스틱으로 분류합니다. 정상 DPD 요청/응답, 설정·주기 및 부정 표현은 실패 집계에서 제외하며, **확정된 근본 원인**은 아닙니다. 기타 IKE 시간 초과·실패는 DPD 미확인으로 별도 표시합니다. 원문과 상대 장비 로그를 대조하세요. 피어 필드가 없으면 원문에서 직접 확인하세요.
+- 추이/요약은 선택 기간 전체, 상세 표는 최근 1,000건(UTC 오름차순 표시)입니다. 데이터가 많으면 기간을 좁히세요. GatewayDiagnosticLog 원문은 구성 변경·HostMaintenanceEvent와의 시간 비교용이며 인과관계를 증명하지 않습니다.
+
+[공식 VPN 진단 로그 안내](https://learn.microsoft.com/en-us/troubleshoot/azure/vpn-gateway/troubleshoot-vpn-with-azure-diagnostics)`;

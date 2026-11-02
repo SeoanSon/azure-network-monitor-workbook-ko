@@ -33,7 +33,7 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 |---|---|---|
 | Overview · 모니터링 기준 | 관점별 선정 목적, 공식 지표의 의미·단위·지원 집계·차원·최소 주기, 적용 집계·분할, 점검 기준·공식 문서 링크 | 한국어 기준 설명 (실시간 데이터 아님) |
 | 리소스 현황 | 기존 통합 현황의 리소스 수, 배포 상태, VPN/ExpressRoute 연결 구성, 리소스 목록 | Resource Graph |
-| VPN 게이트웨이 | S2S 터널 대역폭·수신/송신·드롭, BGP 상태/경로, P2S 연결/대역폭, 최근 진단 | Metrics + 선택형 로그 |
+| VPN 게이트웨이 | S2S 터널 지표, 모든 관점에서 연결·해제 및 DPD/IKE 로그 진단, 선택형 P2S 성능, BGP 상태/경로, 기존 최근 진단 | Metrics + 선택형 로그 |
 | VNet 피어링 | 방향별 연결·주소 공간 동기화·전달 트래픽·게이트웨이 전송, 실제 통신 테스트 결과 | Resource Graph + 선택형 Connection Monitor 로그 |
 | ExpressRoute 회선 | 공급자 프로비저닝, 회선/피어링 설정, 피어별 BGP/ARP 가용성, 기본/보조 트래픽, 게이트웨이 CPU/처리량 | Resource Graph + Metrics + 선택형 로그 |
 | 진단·변경 로그 | 수집 여부, 범주별 추이, 최근 이벤트, 네트워크 리소스 활동 로그 | Log Analytics |
@@ -45,11 +45,11 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 
 [CAF의 모니터링 운영 지침](https://learn.microsoft.com/azure/cloud-adoption-framework/manage/monitor)을 바탕으로 요청한 네 가지 조회 관점을 구성하고, [Azure Well-Architected Framework(WAF)](https://learn.microsoft.com/azure/well-architected/pillars)의 해당 원칙에 대응시켰습니다. **성능·비용·가용성·운영이 CAF의 공식 네 가지 축이라는 뜻은 아닙니다.** WAF에는 Security도 있으며 이번 네 가지 조회 관점의 범위에 포함하지 않았습니다.
 
-상단 **모니터링 관점**을 바꾸면 VPN·VNet 피어링·ExpressRoute·진단 로그의 상세 패널이 해당 관점으로 전환됩니다. 한 번에 하나를 선택하며 기본은 **성능**입니다. 리소스 선택·공통 구성 표는 맥락으로 유지됩니다. Overview의 기준 설명과 리소스 현황은 관점 선택과 무관하게 전체를 표시합니다. 기존 지표는 삭제하지 않았으며 관점별로 재배치했습니다. 진단·변경 로그의 실제 이벤트 조회는 **운영**에서 확인하세요.
+상단 **모니터링 관점**을 바꾸면 VPN·VNet 피어링·ExpressRoute·진단 로그의 상세 패널이 해당 관점으로 전환됩니다. 한 번에 하나를 선택하며 기본은 **성능**입니다. 리소스 선택·공통 구성 표는 맥락으로 유지됩니다. Overview의 기준 설명과 리소스 현황은 관점 선택과 무관하게 전체를 표시합니다. **VPN의 S2S 로그 진단도 모든 관점에 공통 표시**됩니다. 기존 지표는 삭제하지 않았으며 관점별로 재배치했습니다. 기존 진단·변경 로그 탭과 VPN 최근 이벤트 100건 표는 **운영**에서 그대로 확인하세요.
 
 | 관점 | WAF 대응 | VPN | VNet Peering | ExpressRoute |
 |---|---|---|---|---|
-| **성능** | Performance Efficiency | 터널 평균 대역폭·수신/송신량, P2S 연결·대역폭 | Connection Monitor RTT·테스트 결과 | 평균 처리량, **최대 대역폭 사용률**, 게이트웨이 CPU·처리량 |
+| **성능** | Performance Efficiency | 터널 평균 대역폭·수신/송신량, 명시적으로 펼치는 P2S 보조 지표 | Connection Monitor RTT·테스트 결과 | 평균 처리량, **최대 대역폭 사용률**, 게이트웨이 CPU·처리량 |
 | **비용** | Cost Optimization | 터널/P2S 사용 패턴과 SKU 대조 | 구성 목록은 참고만 제공. 피어링별 전송량·청구액 미조회 | 회선 사용률·처리량·게이트웨이 부하와 할당 용량/SKU 대조 |
 | **가용성** | Reliability | BGP 피어 상태, 방향별 터널 드롭 | 방향별 구성 상태 및 실제 테스트 실패율 | 기본·보조 피어별 BGP/ARP 가용성 |
 | **운영** | Operational Excellence | BGP 학습/광고 경로, 터널·협상·P2S 진단 | 주소 공간 동기화·전송 설정, 측정 수집 여부 | 공급자/피어링 구성, PeeringRouteLog |
@@ -121,6 +121,32 @@ Azure Portal의 각 리소스 **모니터링 → 진단 설정**에서 필요한
 진단 로그는 이벤트가 발생해야 생성되며 전송에 시간이 걸립니다. **로그 없음은 정상 또는 변경 없음의 증거가 아닙니다.** 수집 확인 패널은 데이터가 없을 때 설정·권한·범위 점검을 안내합니다. 이벤트 수를 장애 건수로 계산하지 않습니다.
 
 아직 테이블이 없는 작업 영역에서도 안내가 나오도록 빈 스키마와 `union isfuzzy=true`를 사용합니다. Azure가 누락 테이블 경고를 표시할 수 있으며, 권한 오류는 숨기지 않습니다. 쿼리는 Analytics 테이블 기준입니다.
+
+### VPN: S2S 로그 진단 및 선택형 P2S 성능
+
+- VPN 탭은 기본 **성능**을 포함한 네 관점 모두에서 S2S 로그 진단을 제공합니다. 기존 S2S Metrics의 정의·집계·분할은 바꾸지 않았습니다.
+- P2S 성능 차트 두 개는 `NotebookGroup/1.0`의 `loadType: explicit` 보조 그룹으로 이동했습니다. **P2S 보조 지표 펼치기**를 눌러야 조회합니다. 비용 관점의 기존 P2S 대역폭 지표는 유지합니다.
+- **VPN 게이트웨이와 로그 작업 영역**을 선택해야 새 로그 패널을 조회합니다. 작업 영역은 중앙 수집 저장소이며, 구독·리소스 그룹·게이트웨이 필터는 **로그의 게이트웨이 리소스 ID**에 적용합니다. 작업 영역이 위치한 리소스 그룹으로 로그를 제한하지 않습니다. 시간 필터는 공통 조회 시간을 따릅니다.
+- 게이트웨이 진단 설정에서 `TunnelDiagnosticLog`, `IKEDiagnosticLog`, 필요 시 `GatewayDiagnosticLog`를 선택한 기존 작업 영역으로 보내세요. **자동 수집 설정이나 과거 로그 소급 수집은 없습니다.** PolicyBased 게이트웨이는 `GatewayDiagnosticLog`, `RouteDiagnosticLog`만 지원합니다.
+
+새 패널 8개:
+
+1. 범주별 관측 건수와 최초/최종 UTC, 터널/IKE 미관측 경고.
+2. `TunnelConnected` / `TunnelDisconnected` 이벤트 추이 (공통 시간 구간, 피어·인스턴스별).
+3. 피어·인스턴스별 연결/해제 이벤트 요약 (현재 상태 아님).
+4. 터널 연결·해제 시간순 원문.
+5. DPD 시간 초과/실패 의심과 기타 IKE 시간 초과/실패를 구분한 추이.
+6. 해당 의심 이벤트의 분류와 원문.
+7. 정상 DPD 송수신까지 포함한 IKE 원문.
+8. 구성 변경·`HostMaintenanceEvent` 등 GatewayDiagnosticLog 원문 (시간 비교용).
+
+추이·요약은 선택 기간 전체를 집계하며 상세 표는 **최근 1,000건을 선택한 뒤 UTC 오름차순**으로 표시합니다. 피어 필드가 없는 IKE 로그는 `(원문에서 피어 확인)`으로 안내합니다.
+
+DPD 분류는 구조화된 DPD 상태가 아니라 IKE `Message`의 **문자열 휴리스틱**입니다. 정상 요청/응답, 설정·주기 및 `No DPD timeout observed` 같은 부정 표현을 제외합니다. 기타 IKE 실패는 DPD 미확인으로 별도 표시합니다. 표현 차이로 누락·오분류가 가능하므로 원문 및 상대 장비 로그와 대조해야 하며 **확정된 근본 원인이 아닙니다**.
+
+**빈 차트/0건은 정상·연결 중·장애 없음의 증거가 아닙니다.** 범주별 관측 건수는 진단 설정 활성 여부나 수집 완전성을 증명하지 않습니다. 미지원 범주·설정·작업 영역·권한·수집 지연·보존 기간을 확인하세요. 이벤트 창으로 현재 상태·중단 시간·가동률을 계산하지 않으며 Gateway 이벤트의 시간상 인접도 인과관계가 아닙니다.
+
+[공식 VPN 진단 로그 문제 해결](https://learn.microsoft.com/en-us/troubleshoot/azure/vpn-gateway/troubleshoot-vpn-with-azure-diagnostics)
 
 ### VNet Peering의 실제 통신 감시
 
