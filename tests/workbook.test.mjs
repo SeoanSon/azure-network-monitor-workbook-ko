@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { createWorkbook, createTemplate, root, deployUrl, templateUrl, outputs } from '../scripts/build.mjs';
 import { metrics, metricSources } from '../scripts/metrics.mjs';
 import * as queries from '../scripts/queries.mjs';
+import { categories, metricCriteria, metricCriteriaTable, frameworkCriteria, costCriteria, nonMetricCriteria } from '../scripts/criteria.mjs';
 
 function flatten(items) {
   return items.flatMap(item => [item, ...flatten(item.content.items ?? [])]);
@@ -40,7 +41,7 @@ test('all workbook parameter references and conditions resolve', () => {
 
 test('every navigation target has one visible tab group and Korean label', () => {
   const links = items.find(item => item.name === 'navigation').content.links;
-  assert.equal(links.length, 6);
+  assert.equal(links.length, 7);
   for (const link of links) {
     assert.match(link.linkLabel, /[가-힣]/);
     assert.ok(names.has(link.cellValue));
@@ -66,7 +67,7 @@ test('ARM creates only one shared workbook and never changes networking or telem
 
 test('native metrics have a resource selector, time context, supported namespace and dimensions', () => {
   const charts = items.filter(item => item.type === 10);
-  assert.equal(charts.length, 15);
+  assert.equal(charts.length, 26);
   for (const chart of charts) {
     const c = chart.content;
     assert.equal(c.version, 'MetricsItem/2.0');
@@ -158,4 +159,139 @@ test('MIT license and pinned upstream snapshot are preserved, not deployed', () 
   assert.match(readFileSync(resolve(root, 'LICENSE'), 'utf8'), /Copyright \(c\) Microsoft Corporation/);
   assert.equal(JSON.parse(readFileSync(resolve(root, 'upstream/AzureFirewall_ARM.json'), 'utf8')).contentVersion, '1.0.0.0');
   assert.match(readFileSync(resolve(root, 'NOTICE.md'), 'utf8'), /1f98d7a10514817932abdff168ea28ec5cfa847c/);
+});
+
+function visibleItems(items, values) {
+  return items.flatMap(item => {
+    const condition = item.conditionalVisibility;
+    if (condition) {
+      assert.ok(['isEqualTo', 'isNotEqualTo'].includes(condition.comparison));
+      const equal = values[condition.parameterName] === condition.value;
+      if (condition.comparison === 'isEqualTo' ? !equal : equal) return [];
+    }
+    return [item, ...visibleItems(item.content.items ?? [], values)];
+  });
+}
+
+const selections = {
+  Tab: 'overview', MonitoringCategory: 'performance',
+  Workspace: '/selected-workspace', VpnGateway: '/selected-vpn',
+  Circuit: '/selected-circuit', ErGateway: '/selected-er-gateway',
+};
+
+test('Overview is the default criteria tab and the original resource inventory remains separate', () => {
+  const overview = visibleItems(workbook.items, selections);
+  assert.ok(overview.some(i => i.name === 'overview-framework'));
+  assert.ok(overview.some(i => i.name === 'overview-complementary'));
+  assert.ok(!overview.some(i => i.type === 3 || i.type === 10));
+  const inventory = visibleItems(workbook.items, { ...selections, Tab: 'resources' });
+  for (const name of ['summary', 'inventory', 'connections']) assert.ok(inventory.some(i => i.name === name));
+});
+
+test('the category picker contains exactly the four requested Korean viewpoints', () => {
+  const picker = parameters.find(p => p.name === 'MonitoringCategory');
+  assert.equal(picker.type, 2);
+  assert.equal(picker.isRequired, true);
+  assert.equal(picker.multiSelect, false);
+  assert.equal(picker.value, 'performance');
+  assert.deepEqual(JSON.parse(picker.jsonData), [
+    { value: 'performance', label: '성능' }, { value: 'cost', label: '비용' },
+    { value: 'availability', label: '가용성' }, { value: 'operations', label: '운영' },
+  ]);
+});
+
+test('ARM escapes the static JSON option list without changing the Gallery Template options', () => {
+  const data = createTemplate(workbook).variables.workbookData;
+  const picker = data.items.find(i => i.name === 'global-filters').content.parameters.find(p => p.name === 'MonitoringCategory');
+  assert.ok(picker.jsonData.startsWith('[['));
+  assert.deepEqual(JSON.parse(picker.jsonData.slice(1)), JSON.parse(parameters.find(p => p.name === 'MonitoringCategory').jsonData));
+  function checkStrings(value) {
+    if (typeof value === 'string' && value.startsWith('[')) {
+      assert.ok(value.startsWith('[[') || ["[subscription().subscriptionId]", "[parameters('workspaceResourceId')]"].includes(value), `Unescaped ARM literal: ${value}`);
+    } else if (Array.isArray(value)) {
+      value.forEach(checkStrings);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(checkStrings);
+    }
+  }
+  checkStrings(data);
+});
+
+test('every configured REST metric has official definitions, supported aggregation and complete criteria', () => {
+  assert.deepEqual(Object.keys(metricCriteria).sort(), Object.keys(metrics).sort());
+  for (const [key, criterion] of Object.entries(metricCriteria)) {
+    const [namespace, , name, aggregation, splitBy] = metrics[key];
+    assert.ok(criterion.meaning.length > 10, key);
+    assert.ok(criterion.review.length > 10, key);
+    assert.ok(criterion.unit && criterion.grain, key);
+    assert.ok(criterion.dimensions.includes(splitBy), key);
+    assert.ok(criterion.aggregations.includes({ 1: 'Total', 3: 'Maximum', 4: 'Average' }[aggregation]), key);
+    for (const category of criterion.categories) {
+      assert.ok(categories.some(c => c.value === category), key);
+      const table = metricCriteriaTable(category);
+      for (const text of [name, metricSources[namespace], criterion.meaning, criterion.unit, criterion.review]) {
+        assert.ok(table.includes(text), `${key}: missing ${text}`);
+      }
+    }
+  }
+});
+
+test('all four viewpoints work on every resource tab without cross-category metric leaks', () => {
+  for (const Tab of ['vpn', 'peering', 'expressroute', 'logs']) {
+    for (const { value } of categories) {
+      const visible = visibleItems(workbook.items, { ...selections, Tab, MonitoringCategory: value });
+      const categoryGroups = visible.filter(i => i.type === 12 && i.conditionalVisibility?.parameterName === 'MonitoringCategory');
+      assert.equal(categoryGroups.length, 1, `${Tab}/${value}`);
+      assert.ok(categoryGroups[0].content.items.length > 0);
+      for (const item of visible.filter(i => i.type === 10)) {
+        for (const chartMetric of item.content.metrics) {
+          const [key] = Object.entries(metrics).find(([, [ns, category, name]]) => chartMetric.metric === `${ns}-${category}-${name}`);
+          assert.ok(metricCriteria[key].categories.includes(value), `${Tab}/${value}/${key}`);
+        }
+      }
+    }
+  }
+});
+
+test('each documented metric is actually visible in every assigned viewpoint for its resource', () => {
+  for (const [key, criterion] of Object.entries(metricCriteria)) {
+    const [ns, category, name] = metrics[key];
+    for (const MonitoringCategory of criterion.categories) {
+      const Tab = key.startsWith('vpn') ? 'vpn' : 'expressroute';
+      const visible = visibleItems(workbook.items, { ...selections, Tab, MonitoringCategory });
+      assert.ok(visible.some(i => i.type === 10 && i.content.metrics.some(m => m.metric === `${ns}-${category}-${name}`)), `${key}/${MonitoringCategory}`);
+    }
+  }
+});
+
+test('category gates retain workspace and resource-selection gates', () => {
+  for (const Tab of ['vpn', 'peering', 'expressroute', 'logs']) {
+    for (const { value: MonitoringCategory } of categories) {
+      const visible = visibleItems(workbook.items, { ...selections, Tab, MonitoringCategory, Workspace: '', VpnGateway: '', Circuit: '', ErGateway: '' });
+      assert.ok(!visible.some(i => i.type === 10), `${Tab}/${MonitoringCategory}: metrics need a selected resource`);
+      assert.ok(!visible.some(i => i.type === 3 && i.content.queryType === 0), `${Tab}/${MonitoringCategory}: logs need a workspace`);
+    }
+  }
+});
+
+test('cost adds official maximum utilization metrics without inventing billed cost or peering traffic', () => {
+  for (const key of ['erIngressUtilization', 'erEgressUtilization']) {
+    assert.equal(metrics[key][3], 3);
+    assert.equal(metrics[key][4], 'DeviceRole');
+    assert.deepEqual(metricCriteria[key].aggregations, ['Maximum']);
+  }
+  const peeringCost = visibleItems(workbook.items, { ...selections, Tab: 'peering', MonitoringCategory: 'cost' });
+  assert.ok(!peeringCost.some(i => i.type === 10 || (i.type === 3 && i.content.queryType === 0)));
+  assert.match(costCriteria, /실제 청구 금액·단가·예산·절감액은 조회하거나 계산하지 않습니다/);
+  assert.match(costCriteria, /피어링별 전송 바이트를 수집하지 않습니다/);
+});
+
+test('framework mapping distinguishes CAF from WAF and never asserts universal official thresholds', () => {
+  assert.match(frameworkCriteria, /CAF의 공식 네 가지 축을 그대로 인용한 분류는 아닙니다/);
+  assert.match(frameworkCriteria, /Security/);
+  assert.match(frameworkCriteria, /공식 경보 임계값이 아닌 운영 해석/);
+  assert.match(frameworkCriteria, /공통 임계값을 Microsoft 권장값으로 제시하지 않습니다/);
+  for (const c of categories) assert.ok(frameworkCriteria.includes(c.pillar));
+  assert.match(nonMetricCriteria, /플랫폼 Metrics가 아닌/);
+  assert.match(nonMetricCriteria, /전체 검사 0이면 null/);
 });

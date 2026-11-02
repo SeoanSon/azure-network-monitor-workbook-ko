@@ -15,7 +15,7 @@
 3. 로그가 필요하면 `workspaceResourceId`에 **기존** Log Analytics 작업 영역의 전체 리소스 ID를 입력합니다. 모르면 비워 두고 배포 후 선택할 수 있습니다.
 4. 검토 및 만들기를 완료합니다.
 5. 배포 출력의 `workbookPortalUrl` 또는 **Azure Monitor → 통합 문서 → 내 통합 문서**에서 엽니다.
-6. 조회 구독·리소스 그룹·시간을 지정한 뒤 각 탭에서 VPN 게이트웨이 또는 ExpressRoute 회선을 선택합니다.
+6. **Overview · 모니터링 기준**에서 공식 메트릭 설명을 확인하고, **모니터링 관점(성능·비용·가용성·운영)**을 선택한 뒤 각 탭에서 VPN 게이트웨이 또는 ExpressRoute 회선을 선택합니다. 기본 관점은 성능입니다.
 
 작업 영역 ID 형식:
 
@@ -31,7 +31,8 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 
 | 탭 | 주요 내용 | 데이터 원본 |
 |---|---|---|
-| 통합 현황 | 리소스 수, 배포 상태, VPN/ExpressRoute 연결 구성, 리소스 목록 | Resource Graph |
+| Overview · 모니터링 기준 | 관점별 선정 목적, 공식 지표의 의미·단위·지원 집계·차원·최소 주기, 적용 집계·분할, 점검 기준·공식 문서 링크 | 한국어 기준 설명 (실시간 데이터 아님) |
+| 리소스 현황 | 기존 통합 현황의 리소스 수, 배포 상태, VPN/ExpressRoute 연결 구성, 리소스 목록 | Resource Graph |
 | VPN 게이트웨이 | S2S 터널 대역폭·수신/송신·드롭, BGP 상태/경로, P2S 연결/대역폭, 최근 진단 | Metrics + 선택형 로그 |
 | VNet 피어링 | 방향별 연결·주소 공간 동기화·전달 트래픽·게이트웨이 전송, 실제 통신 테스트 결과 | Resource Graph + 선택형 Connection Monitor 로그 |
 | ExpressRoute 회선 | 공급자 프로비저닝, 회선/피어링 설정, 피어별 BGP/ARP 가용성, 기본/보조 트래픽, 게이트웨이 CPU/처리량 | Resource Graph + Metrics + 선택형 로그 |
@@ -39,6 +40,35 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 | 설정·해석 안내 | 권한, 수집 설정, 단위, 제약, 데이터 부재 해석 | 한국어 안내 |
 
 화면 제목·설명·필터·표 열·지표 별칭은 한국어입니다. Azure Portal 자체 메뉴, 공급자가 반환하는 상태 문자열·차원 값·로그 메시지, API 식별자는 원문 그대로 표시될 수 있습니다.
+
+## 모니터링 항목의 선정 기준
+
+[CAF의 모니터링 운영 지침](https://learn.microsoft.com/azure/cloud-adoption-framework/manage/monitor)을 바탕으로 요청한 네 가지 조회 관점을 구성하고, [Azure Well-Architected Framework(WAF)](https://learn.microsoft.com/azure/well-architected/pillars)의 해당 원칙에 대응시켰습니다. **성능·비용·가용성·운영이 CAF의 공식 네 가지 축이라는 뜻은 아닙니다.** WAF에는 Security도 있으며 이번 네 가지 조회 관점의 범위에 포함하지 않았습니다.
+
+상단 **모니터링 관점**을 바꾸면 VPN·VNet 피어링·ExpressRoute·진단 로그의 상세 패널이 해당 관점으로 전환됩니다. 한 번에 하나를 선택하며 기본은 **성능**입니다. 리소스 선택·공통 구성 표는 맥락으로 유지됩니다. Overview의 기준 설명과 리소스 현황은 관점 선택과 무관하게 전체를 표시합니다. 기존 지표는 삭제하지 않았으며 관점별로 재배치했습니다. 진단·변경 로그의 실제 이벤트 조회는 **운영**에서 확인하세요.
+
+| 관점 | WAF 대응 | VPN | VNet Peering | ExpressRoute |
+|---|---|---|---|---|
+| **성능** | Performance Efficiency | 터널 평균 대역폭·수신/송신량, P2S 연결·대역폭 | Connection Monitor RTT·테스트 결과 | 평균 처리량, **최대 대역폭 사용률**, 게이트웨이 CPU·처리량 |
+| **비용** | Cost Optimization | 터널/P2S 사용 패턴과 SKU 대조 | 구성 목록은 참고만 제공. 피어링별 전송량·청구액 미조회 | 회선 사용률·처리량·게이트웨이 부하와 할당 용량/SKU 대조 |
+| **가용성** | Reliability | BGP 피어 상태, 방향별 터널 드롭 | 방향별 구성 상태 및 실제 테스트 실패율 | 기본·보조 피어별 BGP/ARP 가용성 |
+| **운영** | Operational Excellence | BGP 학습/광고 경로, 터널·협상·P2S 진단 | 주소 공간 동기화·전송 설정, 측정 수집 여부 | 공급자/피어링 구성, PeeringRouteLog |
+
+운영 관점의 진단·변경 로그 탭에서는 공통 네트워크 진단 이벤트·수집 여부·활동 로그를 조회합니다. 같은 지표가 성능과 비용 등 여러 관점에 재사용되어도 별도 지표나 비용 합산이 아닙니다.
+
+### Overview에서 제공하는 공식 메트릭 설명
+
+- 각 REST 지표 이름을 클릭하면 Microsoft Learn의 해당 리소스 **공식 지원 지표 문서**가 열립니다.
+- 공식 의미·단위·지원 집계·차원·최소 수집 주기와 Workbook에서 실제로 적용한 집계·분할을 구분합니다.
+- **최소 수집 주기와 화면 집계 구간은 다릅니다.** 실제 구간은 Portal의 조회 시간에 따라 달라질 수 있습니다.
+- 공식 메트릭과 구분하여 Resource Graph 구성 속성·Connection Monitor 로그·진단/활동 로그의 역할도 설명합니다.
+- 점검 기준은 공식 경보 임계값이 아닌 운영 해석입니다. 고정 80%·95% 등을 Microsoft 공통 권장 임계값으로 제시하지 않습니다. 업무 SLO·정상 기준선·피크·지속 시간·SKU 한도로 별도 정의해야 합니다.
+
+### 비용 관점의 한계
+
+비용 패널은 **용량·사용량 기반 최적화 참고**이며 실제 청구 금액·단가·예산·절감액을 조회하거나 계산하지 않습니다. 트래픽이 0이어도 할당 리소스의 고정 비용이 0이라는 뜻은 아닙니다.
+
+실제 비용은 [Microsoft Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/overview-cost-management)의 비용 분석에서 리소스·미터·기간·계약을 확인하세요. 요금제·과금 방향·지역·피크·장애 시 우회 트래픽·성장 여유를 고려해야 하므로 낮은 사용률만으로 축소/삭제를 권고하지 않습니다. 특히 피어링별 전송 바이트를 수집하지 않으므로 피어링 개수나 Connection Monitor 결과로 비용을 추정하지 않습니다.
 
 ## 사전 준비
 
@@ -66,6 +96,7 @@ VPN/ExpressRoute 지표는 플랫폼 Metrics를 직접 조회합니다. `AzureMe
 | VPN P2S | `P2SConnectionCount`, `P2SBandwidth` | 연결 수 구간 합계 / 바이트/초 평균 |
 | ExpressRoute 가용성 | `BgpAvailability`, `ArpAvailability` | %, 평균 |
 | ExpressRoute 트래픽 | `BitsInPerSecond`, `BitsOutPerSecond` | 비트/초, 평균 |
+| ExpressRoute 대역폭 사용률 | `IngressBandwidthUtilization`, `EgressBandwidthUtilization` | %, **최대** (공식 지원 집계) |
 | ExpressRoute VNet 게이트웨이 | `ExpressRouteGatewayCpuUtilization`, `ExpressRouteGatewayBitsPerSecond` | % / 비트/초, 평균 |
 
 - BGP/ARP는 기본·보조 **Peer** 차원으로 분할합니다. Private와 비-Private(Microsoft 등)는 별도 그래프이며, 미구성 피어링 그래프는 비어 있을 수 있습니다.
@@ -130,7 +161,8 @@ npm run check
 - [scripts/build.mjs](scripts/build.mjs): 한국어 화면·필터·탭과 ARM 템플릿 생성.
 - [scripts/queries.mjs](scripts/queries.mjs): ARG 및 Log Analytics 쿼리.
 - [scripts/metrics.mjs](scripts/metrics.mjs): 지원 지표·차원·집계 정의.
-- 생성된 두 JSON 파일을 직접 수정하지 말고 소스를 변경한 후 `npm run build`를 실행하세요.
+- [scripts/criteria.mjs](scripts/criteria.mjs): 관점 분류, 지표별 공식 정의·지원 집계·차원·선정 기준과 Overview 설명.
+- 생성된 두 JSON 파일을 직접 수정하지 말고 소스를 변경한 후 `npm run build`를 실행하세요. 지표를 추가할 때 공식 정의와 관점 분류도 추가해야 하며 테스트로 누락을 검출합니다.
 - GitHub Actions는 생성 파일 일관성과 구조·범위·지표·탭·출처 테스트를 실행합니다. Azure 로그인을 사용하거나 리소스를 배포하지 않습니다.
 
 Azure에 로그인되어 있다면 리소스를 생성하지 않고 ARM 공급자 검증과 실제 ARG/로그 쿼리 검증을 실행할 수 있습니다.
@@ -146,7 +178,7 @@ Azure에 로그인되어 있다면 리소스를 생성하지 않고 ARM 공급�
 
 **검증 범위:** 구조 검사나 ARM 공급자 검증 성공만으로 모든 실제 네트워크의 지표·로그가 존재하거나 Portal 렌더링이 검증되는 것은 아닙니다. 실제 VPN/ExpressRoute 리소스와 진단 전송을 설정한 뒤 각 그래프·필터·시간 변경을 확인하세요.
 
-### 구현 시 검증 결과 (2026-11-02)
+### 최초 구현 검증 결과 (2026-11-02)
 
 - 로컬 자동 테스트 13개 및 생성 JSON 일관성 검사 통과.
 - Azure ARM `ProviderNoRbac` 공급자 검증 통과(실제 배포하지 않음).
@@ -154,6 +186,12 @@ Azure에 로그인되어 있다면 리소스를 생성하지 않고 ARM 공급�
 - 합성 로그 테스트 3개 통과: 리소스 그룹 필터/메시지 정규화, 데이터 부재 경고, 검사 수 가중 실패율·RTT 및 0개 검사 시 null.
 - 복제한 원본 5개 파일의 내용이 고정 커밋의 Git blob 해시와 일치함을 확인.
 - 검증 환경에 VPN Gateway/ExpressRoute 회선이 없어 해당 실제 시계열과 Azure Portal 화면은 검증하지 못했습니다. 테스트용 네트워크나 유료 회선을 임의 생성하지 않았습니다.
+
+### Overview·관점별 분류 업데이트
+
+공식 지표 18개의 설명과 실제 화면 항목 대응, 4개 관점 × 4개 상세 탭의 가시성, 관점 간 잘못된 지표 노출 방지, 선택 리소스/작업 영역 조건 유지, 최대 사용률 집계, 비용 미조회 안내를 포함한 **자동 테스트 22개와 ARM 공급자 검증**을 통과했습니다. ARM에서 정적 JSON 옵션을 식으로 오인하지 않도록 이스케이프 처리도 검증합니다. 추가 지표는 ExpressRoute 회선의 수신/송신 대역폭 사용률이며 공식 문서에서 지원하는 **Maximum**을 적용합니다. 로그/ARG 쿼리의 범위와 의미는 유지합니다.
+
+기존 배포본은 GitHub 변경만으로 자동 갱신되지 않습니다. 위 **Deploy to Azure**로 같은 리소스 그룹·Workbook 표시 이름을 사용해 재배포하거나, 고급 편집기에서 갱신된 Gallery Template을 가져오세요. 재배포 전 개인 편집 내용을 사본으로 저장하세요.
 
 ## 제한 및 문제 해결
 
@@ -176,6 +214,9 @@ Workbook은 저장된 조회 화면이며 데이터 수집을 대신하지 않�
 
 ## 공식 참고 자료
 
+- [CAF 모니터링 운영 지침](https://learn.microsoft.com/azure/cloud-adoption-framework/manage/monitor)
+- [WAF의 공식 5가지 핵심 요소](https://learn.microsoft.com/azure/well-architected/pillars)
+- [실제 청구 비용 확인: Microsoft Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/overview-cost-management)
 - [Azure Workbooks 데이터 원본](https://learn.microsoft.com/azure/azure-monitor/visualize/workbooks-data-sources)
 - [VPN/ExpressRoute Gateway 지원 지표](https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-virtualnetworkgateways-metrics)
 - [ExpressRoute 회선 지원 지표](https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-expressroutecircuits-metrics)

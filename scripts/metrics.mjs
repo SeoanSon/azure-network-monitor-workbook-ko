@@ -17,6 +17,8 @@ export const metrics = {
   erArp: [circuit, 'Circuit Availability', 'ArpAvailability', 4, 'Peer', 'ARP 가용성 (%)'],
   erIngress: [circuit, 'Circuit Traffic', 'BitsInPerSecond', 4, 'DeviceRole', 'Azure 수신 (비트/초)'],
   erEgress: [circuit, 'Circuit Traffic', 'BitsOutPerSecond', 4, 'DeviceRole', 'Azure 송신 (비트/초)'],
+  erIngressUtilization: [circuit, 'Circuit Traffic', 'IngressBandwidthUtilization', 3, 'DeviceRole', '수신 대역폭 사용률 (최대 %)'],
+  erEgressUtilization: [circuit, 'Circuit Traffic', 'EgressBandwidthUtilization', 3, 'DeviceRole', '송신 대역폭 사용률 (최대 %)'],
   erGatewayCpu: [vpn, 'Performance', 'ExpressRouteGatewayCpuUtilization', 4, 'roleInstance', '게이트웨이 CPU (%)'],
   erGatewayBandwidth: [vpn, 'Performance', 'ExpressRouteGatewayBitsPerSecond', 4, 'roleInstance', '게이트웨이 수신 (비트/초)'],
 };
