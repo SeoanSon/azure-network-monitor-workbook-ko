@@ -64,8 +64,9 @@ foreach ($node in $nodes) {
 }
 
 function Expand-WorkbookQuery {
-    param([string]$Query)
-    return $Query.Replace('{Subscriptions}', "'$subscription'").
+    param([string]$Query, [switch]$UseGuidSubscriptions)
+    $pickerValue = if ($UseGuidSubscriptions) { $subscription } else { "/subscriptions/$subscription" }
+    return $Query.Replace('{Subscriptions}', "'$pickerValue'").
         Replace('{ResourceGroups}', "'*'").
         Replace('{Circuit}', "/subscriptions/$subscription/resourceGroups/workbook-validation/providers/Microsoft.Network/expressRouteCircuits/not-deployed").
         Replace('{VpnGateway}', "/subscriptions/$subscription/resourceGroups/workbook-validation/providers/Microsoft.Network/virtualNetworkGateways/not-deployed").
@@ -79,6 +80,19 @@ foreach ($check in $checks) {
         subscriptions = @($subscription); query = $query; options = @{ '$top' = 1000 }
     }
     Write-Host "PASS Resource Graph $($check.name) ($($result.count) rows)"
+    if ($check.name -eq 'peerings') {
+        $legacy = Invoke-JsonRequest 'https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01' @{
+            subscriptions = @($subscription)
+            query = (Expand-WorkbookQuery $check.query -UseGuidSubscriptions)
+            options = @{ '$top' = 1000 }
+        }
+        $ids = @($result.data | ForEach-Object { $_.id.ToLowerInvariant() } | Sort-Object)
+        $legacyIds = @($legacy.data | ForEach-Object { $_.id.ToLowerInvariant() } | Sort-Object)
+        if ($result.count -ne $legacy.count -or ($ids.Count -gt 0 -and (Compare-Object $ids $legacyIds))) {
+            throw 'Peering identities differ between subscription ARM resource IDs and legacy GUID values.'
+        }
+        Write-Host "PASS peering identities match for subscription ARM IDs and GUIDs ($($ids.Count) rows)"
+    }
 }
 
 if ($WorkspaceResourceId) {

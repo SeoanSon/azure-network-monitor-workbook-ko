@@ -61,7 +61,7 @@ test('ARM creates only one shared workbook and never changes networking or telem
   assert.match(template.parameters.workbookId.defaultValue, /guid\(resourceGroup\(\)\.id/);
   assert.equal(template.parameters.workspaceResourceId.defaultValue, '');
   const defaults = template.variables.workbookData.items.find(i => i.name === 'global-filters').content.parameters;
-  assert.deepEqual(defaults.find(p => p.name === 'Subscriptions').value, ['[subscription().subscriptionId]']);
+  assert.deepEqual(defaults.find(p => p.name === 'Subscriptions').value, ['[subscription().id]']);
   assert.equal(defaults.find(p => p.name === 'Workspace').value, "[parameters('workspaceResourceId')]");
 });
 
@@ -207,7 +207,7 @@ test('ARM escapes the static JSON option list without changing the Gallery Templ
   assert.deepEqual(JSON.parse(picker.jsonData.slice(1)), JSON.parse(parameters.find(p => p.name === 'MonitoringCategory').jsonData));
   function checkStrings(value) {
     if (typeof value === 'string' && value.startsWith('[')) {
-      assert.ok(value.startsWith('[[') || ["[subscription().subscriptionId]", "[parameters('workspaceResourceId')]"].includes(value), `Unescaped ARM literal: ${value}`);
+      assert.ok(value.startsWith('[[') || ["[subscription().id]", "[parameters('workspaceResourceId')]"].includes(value), `Unescaped ARM literal: ${value}`);
     } else if (Array.isArray(value)) {
       value.forEach(checkStrings);
     } else if (value && typeof value === 'object') {
@@ -294,4 +294,29 @@ test('framework mapping distinguishes CAF from WAF and never asserts universal o
   for (const c of categories) assert.ok(frameworkCriteria.includes(c.pillar));
   assert.match(nonMetricCriteria, /플랫폼 Metrics가 아닌/);
   assert.match(nonMetricCriteria, /전체 검사 0이면 null/);
+});
+
+test('all subscription filters accept picker ARM resource IDs as well as legacy GUIDs', () => {
+  const graphFilter = queries.subscriptionFilter();
+  const logFilter = queries.subscriptionFilter("tostring(split(_ResourceId, '/')[2])");
+  assert.equal(graphFilter, "| where subscriptionId in~ ({Subscriptions}) or strcat('/subscriptions/', subscriptionId) in~ ({Subscriptions})");
+  assert.ok(logFilter.includes("strcat('/subscriptions/', tostring(split(_ResourceId, '/')[2]))"));
+  for (const item of items.filter(i => i.type === 3)) {
+    assert.ok(item.content.query.includes(item.content.queryType === 1 ? graphFilter : logFilter), item.name);
+  }
+  for (const p of parameters.filter(p => p.query?.includes('subscriptionId in~'))) {
+    assert.ok(p.query.includes(graphFilter), p.name);
+  }
+  assert.match(readFileSync(resolve(root, 'scripts/validate-azure.ps1'), 'utf8'), /else \{ "\/subscriptions\/\$subscription" \}/);
+});
+
+test('the peering configuration table remains visible without a VPN gateway or log workspace in every viewpoint', () => {
+  for (const { value: MonitoringCategory } of categories) {
+    const visible = visibleItems(workbook.items, { ...selections, Tab: 'peering', MonitoringCategory, Workspace: '', VpnGateway: '', Circuit: '', ErGateway: '' });
+    const peering = visible.find(i => i.name === 'peerings');
+    assert.ok(peering, MonitoringCategory);
+    assert.equal(peering.content.queryType, 1);
+    assert.deepEqual(peering.content.crossComponentResources, ['{Subscriptions}']);
+    assert.ok(!peering.conditionalVisibility);
+  }
 });

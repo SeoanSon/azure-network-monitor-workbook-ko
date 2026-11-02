@@ -1,4 +1,7 @@
-export const scope = `| where subscriptionId in~ ({Subscriptions})
+export const subscriptionFilter = (expression = 'subscriptionId') =>
+  `| where ${expression} in~ ({Subscriptions}) or strcat('/subscriptions/', ${expression}) in~ ({Subscriptions})`;
+
+export const scope = `${subscriptionFilter()}
 | where '*' in ({ResourceGroups}) or resourceGroup in~ ({ResourceGroups})`;
 
 export const types = [
@@ -93,7 +96,7 @@ ${scope}
 | order by ['확인'] asc, ['로컬 VNet'] asc, ['피어링'] asc`;
 
 const logScope = `| where TimeGenerated {TimeRange}
-| where tolower(tostring(split(_ResourceId, '/')[2])) in~ ({Subscriptions})
+${subscriptionFilter("tostring(split(_ResourceId, '/')[2])")}
 | where '*' in ({ResourceGroups}) or tostring(split(_ResourceId, '/')[4]) in~ ({ResourceGroups})`;
 
 export const diagnosticsBase = `let NetworkLogs = union isfuzzy=true

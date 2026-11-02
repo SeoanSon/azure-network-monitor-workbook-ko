@@ -76,7 +76,7 @@ export function createWorkbook() {
         }),
         parameter('ResourceGroups', '리소스 그룹', 2, {
           isRequired: true, multiSelect: true, quote: "'", delimiter: ',',
-          query: 'ResourceContainers\n| where type =~ \'microsoft.resources/subscriptions/resourcegroups\'\n| where subscriptionId in~ ({Subscriptions})\n| project value = name, label = name\n| distinct value, label\n| order by label asc',
+          query: `ResourceContainers\n| where type =~ 'microsoft.resources/subscriptions/resourcegroups'\n${q.subscriptionFilter()}\n| project value = name, label = name\n| distinct value, label\n| order by label asc`,
           queryType: 1, resourceType: 'microsoft.resourcegraph/resources',
           crossComponentResources: ['{Subscriptions}'], value: ['value::all'],
           typeSettings: { additionalResourceOptions: ['value::all'], selectAllValue: '*' },
@@ -257,7 +257,7 @@ export function createTemplate(workbook) {
   const categoryPicker = params.find(p => p.name === 'MonitoringCategory');
   // ARM treats a leading "[" as an expression, including a workbook's static JSON option list.
   categoryPicker.jsonData = `[${categoryPicker.jsonData}`;
-  params.find(p => p.name === 'Subscriptions').value = ["[subscription().subscriptionId]"];
+  params.find(p => p.name === 'Subscriptions').value = ["[subscription().id]"];
   params.find(p => p.name === 'Workspace').value = "[parameters('workspaceResourceId')]";
   return {
     $schema: 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',
