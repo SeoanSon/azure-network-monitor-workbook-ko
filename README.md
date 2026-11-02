@@ -41,9 +41,18 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 
 화면 제목·설명·필터·표 열·지표 별칭은 한국어입니다. Azure Portal 자체 메뉴, 공급자가 반환하는 상태 문자열·차원 값·로그 메시지, API 식별자는 원문 그대로 표시될 수 있습니다.
 
-## 모니터링 항목의 선정 기준
+## WAF 모니터링 기준
 
-[CAF의 모니터링 운영 지침](https://learn.microsoft.com/azure/cloud-adoption-framework/manage/monitor)을 바탕으로 요청한 네 가지 조회 관점을 구성하고, [Azure Well-Architected Framework(WAF)](https://learn.microsoft.com/azure/well-architected/pillars)의 해당 원칙에 대응시켰습니다. **성능·비용·가용성·운영이 CAF의 공식 네 가지 축이라는 뜻은 아닙니다.** WAF에는 Security도 있으며 이번 네 가지 조회 관점의 범위에 포함하지 않았습니다.
+[Azure Well-Architected Framework(WAF)](https://learn.microsoft.com/azure/well-architected/pillars)를 기준으로 성능·비용·가용성·운영을 분류합니다. 가용성은 Reliability의 일부이며 복구·DR 전체를 평가하지는 않습니다. Security는 이번 화면의 범위에 포함하지 않았습니다.
+
+| 관점 | 공식 WAF 체크리스트 근거 | 확인할 질문 |
+|---|---|---|
+| 성능 | [PE:02 용량 계획 · PE:04 성능 측정](https://learn.microsoft.com/azure/well-architected/performance-efficiency/checklist) | 필요한 처리량과 응답 속도를 충족하는가? |
+| 비용 | [CO:06 사용량과 과금 단위 · CO:07 구성 요소 비용 최적화](https://learn.microsoft.com/azure/well-architected/cost-optimization/checklist) | 할당 용량을 실제 사용 수준에 맞게 조정할 여지가 있는가? |
+| 가용성 | [RE:05 이중화 · RE:10 상태 모니터링](https://learn.microsoft.com/azure/well-architected/reliability/checklist) | 기본·보조 경로가 연결되어 통신할 수 있는가? |
+| 운영 | [OE:07 관측 가능성 · OE:08 인시던트 대응](https://learn.microsoft.com/azure/well-architected/operational-excellence/checklist) | 구성 변경과 장애의 원인을 추적할 수 있는가? |
+
+WAF는 관점의 분류 근거이며, 이 Workbook의 개별 메트릭 선택이나 임계값을 직접 규정하는 목록은 아닙니다.
 
 상단 **모니터링 관점**을 바꾸면 VPN·VNet 피어링·ExpressRoute·진단 로그의 상세 패널이 해당 관점으로 전환됩니다. 한 번에 하나를 선택하며 기본은 **성능**입니다. 리소스 선택·공통 구성 표는 맥락으로 유지됩니다. Overview의 기준 설명과 리소스 현황은 관점 선택과 무관하게 전체를 표시합니다. **VPN의 S2S 로그 진단도 모든 관점에 공통 표시**됩니다. 기존 지표는 삭제하지 않았으며 관점별로 재배치했습니다. 기존 진단·변경 로그 탭과 VPN 최근 이벤트 100건 표는 **운영**에서 그대로 확인하세요.
 
@@ -62,6 +71,9 @@ GUID 형식의 Workspace/Customer ID가 아니라 위 **Azure 리소스 ID**를 
 - 공식 의미·단위·지원 집계·차원·최소 수집 주기와 Workbook에서 실제로 적용한 집계·분할을 구분합니다.
 - **최소 수집 주기와 화면 집계 구간은 다릅니다.** 실제 구간은 Portal의 조회 시간에 따라 달라질 수 있습니다.
 - 공식 메트릭과 구분하여 Resource Graph 구성 속성·Connection Monitor 로그·진단/활동 로그의 역할도 설명합니다.
+- **점검기준**은 “어떤 메트릭인지 + 언제 확인하는지”로 간결하게 표시합니다. 같은 지표라도 성능에서는 병목·부하, 비용에서는 사용 수준·할당 용량을 확인하도록 설명을 구분합니다.
+- 예: `TunnelAverageBandwidth` → “터널의 평균 대역폭입니다. VPN 통신이 느려지거나 터널 용량 증설을 검토할 때 확인합니다.”
+- 집계·SKU·비용 등의 주의사항은 개별 행 대신 공통 해석 안내와 비용 안내에서 설명합니다.
 - 점검 기준은 공식 경보 임계값이 아닌 운영 해석입니다. 고정 80%·95% 등을 Microsoft 공통 권장 임계값으로 제시하지 않습니다. 업무 SLO·정상 기준선·피크·지속 시간·SKU 한도로 별도 정의해야 합니다.
 
 ### 비용 관점의 한계
@@ -187,7 +199,7 @@ npm run check
 - [scripts/build.mjs](scripts/build.mjs): 한국어 화면·필터·탭과 ARM 템플릿 생성.
 - [scripts/queries.mjs](scripts/queries.mjs): ARG 및 Log Analytics 쿼리.
 - [scripts/metrics.mjs](scripts/metrics.mjs): 지원 지표·차원·집계 정의.
-- [scripts/criteria.mjs](scripts/criteria.mjs): 관점 분류, 지표별 공식 정의·지원 집계·차원·선정 기준과 Overview 설명.
+- [scripts/criteria.mjs](scripts/criteria.mjs): WAF 관점 분류, 지표별 공식 정의·지원 집계·차원·점검기준과 Overview 설명.
 - 생성된 두 JSON 파일을 직접 수정하지 말고 소스를 변경한 후 `npm run build`를 실행하세요. 지표를 추가할 때 공식 정의와 관점 분류도 추가해야 하며 테스트로 누락을 검출합니다.
 - GitHub Actions는 생성 파일 일관성과 구조·범위·지표·탭·출처 테스트를 실행합니다. Azure 로그인을 사용하거나 리소스를 배포하지 않습니다.
 
@@ -251,7 +263,6 @@ Workbook은 저장된 조회 화면이며 데이터 수집을 대신하지 않�
 
 ## 공식 참고 자료
 
-- [CAF 모니터링 운영 지침](https://learn.microsoft.com/azure/cloud-adoption-framework/manage/monitor)
 - [WAF의 공식 5가지 핵심 요소](https://learn.microsoft.com/azure/well-architected/pillars)
 - [실제 청구 비용 확인: Microsoft Cost Management](https://learn.microsoft.com/azure/cost-management-billing/costs/overview-cost-management)
 - [Azure Workbooks 데이터 원본](https://learn.microsoft.com/azure/azure-monitor/visualize/workbooks-data-sources)

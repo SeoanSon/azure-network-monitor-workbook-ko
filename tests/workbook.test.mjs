@@ -230,7 +230,8 @@ test('every configured REST metric has official definitions, supported aggregati
     for (const category of criterion.categories) {
       assert.ok(categories.some(c => c.value === category), key);
       const table = metricCriteriaTable(category);
-      for (const text of [name, metricSources[namespace], criterion.meaning, criterion.unit, criterion.review]) {
+      const review = category === 'cost' ? criterion.costReview : criterion.review;
+      for (const text of [name, metricSources[namespace], criterion.meaning, criterion.unit, review]) {
         assert.ok(table.includes(text), `${key}: missing ${text}`);
       }
     }
@@ -287,14 +288,50 @@ test('cost adds official maximum utilization metrics without inventing billed co
   assert.match(costCriteria, /피어링별 전송 바이트를 수집하지 않습니다/);
 });
 
-test('framework mapping distinguishes CAF from WAF and never asserts universal official thresholds', () => {
-  assert.match(frameworkCriteria, /CAF의 공식 네 가지 축을 그대로 인용한 분류는 아닙니다/);
+test('framework mapping uses WAF checklists and never asserts universal official thresholds', () => {
+  assert.doesNotMatch(frameworkCriteria, /CAF|cloud-adoption-framework/);
   assert.match(frameworkCriteria, /Security/);
   assert.match(frameworkCriteria, /공식 경보 임계값이 아닌 운영 해석/);
   assert.match(frameworkCriteria, /공통 임계값을 Microsoft 권장값으로 제시하지 않습니다/);
-  for (const c of categories) assert.ok(frameworkCriteria.includes(c.pillar));
+  for (const c of categories) {
+    assert.ok(frameworkCriteria.includes(c.pillar));
+    assert.ok(frameworkCriteria.includes(c.codes));
+    assert.ok(frameworkCriteria.includes(`https://learn.microsoft.com/azure/well-architected/${c.reference}/checklist`));
+  }
   assert.match(nonMetricCriteria, /플랫폼 Metrics가 아닌/);
   assert.match(nonMetricCriteria, /전체 검사 0이면 null/);
+});
+
+test('checkpoint cells state only the metric meaning and when to inspect it, without repetitive caveats', () => {
+  for (const { value } of categories) {
+    const table = metricCriteriaTable(value);
+    assert.match(table, /\| 점검기준 \|/);
+    assert.doesNotMatch(table, /선정 이유|선정이유|판정 한계/);
+    for (const [key, criterion] of Object.entries(metricCriteria).filter(([, c]) => c.categories.includes(value))) {
+      const review = value === 'cost' ? criterion.costReview : criterion.review;
+      const checkpoint = `${criterion.meaning} ${review}`;
+      assert.equal(checkpoint.split('.').filter(Boolean).length, 2, key);
+      assert.ok(checkpoint.length <= 110, `${key}/${value} is too verbose`);
+      assert.match(review, /때|장애 시/, `${key}/${value} needs a concrete inspection occasion`);
+      assert.doesNotMatch(checkpoint, /청구|간주하지|아닙니다|보장하지|미포함|계산하지|해석하지/, key);
+      assert.ok(table.includes(checkpoint), `${key}/${value}`);
+    }
+  }
+  assert.equal(metricCriteria.vpnBandwidth.review, 'VPN 통신이 느려지거나 터널 용량 증설을 검토할 때 확인합니다.');
+});
+
+test('reused metrics have distinct performance and cost checkpoints and current docs use WAF only', () => {
+  for (const [key, criterion] of Object.entries(metricCriteria)) {
+    if (!criterion.categories.includes('cost')) continue;
+    assert.ok(criterion.costReview?.length > 10, key);
+    assert.notEqual(criterion.costReview, criterion.review, key);
+    assert.ok(metricCriteriaTable('performance').includes(criterion.review), key);
+    assert.ok(metricCriteriaTable('cost').includes(criterion.costReview), key);
+  }
+  const generated = JSON.stringify(workbook);
+  const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
+  assert.doesNotMatch(generated + readme, /\bCAF\b|cloud-adoption-framework|선정 이유 및 점검 기준/);
+  assert.match(nonMetricCriteria, /\| 점검기준 \|/);
 });
 
 test('all subscription filters accept picker ARM resource IDs as well as legacy GUIDs', () => {
@@ -572,7 +609,7 @@ test('P2S performance panels move intact into an explicit-load supplement, not t
   assert.ok(requiredItem('vpn-cost').content.items.some(item => item.name === 'cost-vpn-p2s-bandwidth'));
 });
 
-test('HEAD metrics, non-VPN content, original VPN operations, license and upstream remain unchanged', () => {
+test('HEAD metrics, non-VPN behavior outside Overview wording, original VPN operations, license and upstream remain unchanged', () => {
   const headFile = path => execFileSync('git', ['show', `HEAD:${path}`], { cwd: root });
   const head = JSON.parse(headFile('network-monitor.workbook').toString('utf8'));
   const headItems = flatten(head.items);
@@ -581,7 +618,7 @@ test('HEAD metrics, non-VPN content, original VPN operations, license and upstre
   const withoutEditableOverviewText = item => {
     const copy = structuredClone(item);
     for (const child of flatten([copy])) {
-      if (['overview-complementary', 'overview-framework'].includes(child.name)) delete child.content.json;
+      if (child.type === 1 && child.name.startsWith('overview-')) delete child.content.json;
     }
     return copy;
   };

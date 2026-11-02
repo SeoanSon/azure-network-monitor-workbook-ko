@@ -117,7 +117,7 @@ export function createWorkbook() {
       },
       group('overview-section', 'overview', [
         text('overview-framework', frameworkCriteria),
-        ...categories.map(({ value, label }) => text(`overview-${value}`, `## ${label} · 공식 메트릭 선정 기준\n\n${metricCriteriaTable(value)}${value === 'cost' ? `\n\n${costCriteria}` : ''}`)),
+        ...categories.map(({ value, label }) => text(`overview-${value}`, `## ${label} · 메트릭 점검기준\n\n${metricCriteriaTable(value)}${value === 'cost' ? `\n\n${costCriteria}` : ''}`)),
         text('overview-complementary', nonMetricCriteria),
       ]),
       group('resources-section', 'resources', [
